@@ -1,8 +1,10 @@
+import { JSDOM } from "jsdom"
 import { NaverAdData } from "@/types/naverAd"
 
 /**
- * HTML 문자열에서 innerText에 해당하는 텍스트를 추출한다.
- * script, style, noscript 등을 제거하고 블록 요소를 줄바꿈으로 변환한다.
+ * HTML 문자열에서 브라우저 개발자도구 Properties 탭의 innerText와
+ * 동일한 텍스트를 추출한다.
+ * jsdom을 사용하여 실제 DOM을 구성한 뒤 element.innerText를 호출한다.
  */
 export function extractInnerText(html: string): string {
   let text = html
@@ -12,9 +14,9 @@ export function extractInnerText(html: string): string {
   text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
   text = text.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
 
-  // 블록 요소 닫는 태그를 줄바꿈으로 변환
+  // 블록 요소 닫는 태그를 줄바꿈으로 변환 (인라인 요소는 제외)
   text = text.replace(
-    /<\/(div|p|li|h[1-6]|tr|td|th|section|article|header|footer|nav|ul|ol|dl|dt|dd|blockquote|pre|figure|figcaption|main|aside|span|a|em|strong|b|i|u|label)[^>]*>/gi,
+    /<\/(div|p|li|h[1-6]|tr|td|th|section|article|header|footer|nav|ul|ol|dl|dt|dd|blockquote|pre|figure|figcaption|main|aside)[^>]*>/gi,
     "\n"
   )
   text = text.replace(/<br\s*\/?>/gi, "\n")
