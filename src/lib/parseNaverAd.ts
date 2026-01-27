@@ -1,43 +1,22 @@
+import { JSDOM } from "jsdom"
 import { NaverAdData } from "@/types/naverAd"
 
 /**
- * HTML 문자열에서 innerText에 해당하는 텍스트를 추출한다.
- * script, style, noscript 등을 제거하고 블록 요소를 줄바꿈으로 변환한다.
+ * HTML 문자열에서 브라우저 개발자도구 Properties 탭의 innerText와
+ * 동일한 텍스트를 추출한다.
+ * jsdom을 사용하여 실제 DOM을 구성한 뒤 element.innerText를 호출한다.
  */
 export function extractInnerText(html: string): string {
-  let text = html
+  const dom = new JSDOM(html)
+  const document = dom.window.document
 
-  // script, style, noscript 콘텐츠 제거
-  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-  text = text.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
+  // script, style, noscript 요소 제거 (보이지 않는 콘텐츠)
+  document
+    .querySelectorAll("script, style, noscript")
+    .forEach((el) => el.remove())
 
-  // 블록 요소 닫는 태그를 줄바꿈으로 변환
-  text = text.replace(
-    /<\/(div|p|li|h[1-6]|tr|td|th|section|article|header|footer|nav|ul|ol|dl|dt|dd|blockquote|pre|figure|figcaption|main|aside|span|a|em|strong|b|i|u|label)[^>]*>/gi,
-    "\n"
-  )
-  text = text.replace(/<br\s*\/?>/gi, "\n")
-  text = text.replace(/<hr\s*\/?>/gi, "\n")
-
-  // 남은 태그 제거
-  text = text.replace(/<[^>]+>/g, "")
-
-  // HTML 엔티티 디코딩
-  text = text.replace(/&amp;/g, "&")
-  text = text.replace(/&lt;/g, "<")
-  text = text.replace(/&gt;/g, ">")
-  text = text.replace(/&quot;/g, '"')
-  text = text.replace(/&#39;/g, "'")
-  text = text.replace(/&nbsp;/g, " ")
-  text = text.replace(/&#\d+;/g, "")
-
-  // 공백 정리
-  text = text.replace(/[ \t]+/g, " ")
-  text = text.replace(/\n[ \t]+/g, "\n")
-  text = text.replace(/[ \t]+\n/g, "\n")
-  text = text.replace(/\n{3,}/g, "\n\n")
-
+  const text = document.body?.innerText ?? document.body?.textContent ?? ""
+  dom.window.close()
   return text.trim()
 }
 
