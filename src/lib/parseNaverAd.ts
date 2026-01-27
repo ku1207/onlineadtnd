@@ -12,9 +12,9 @@ export function extractInnerText(html: string): string {
   text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
   text = text.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
 
-  // 블록 요소 닫는 태그를 줄바꿈으로 변환
+  // 블록 요소 닫는 태그를 줄바꿈으로 변환 (인라인 요소는 제외)
   text = text.replace(
-    /<\/(div|p|li|h[1-6]|tr|td|th|section|article|header|footer|nav|ul|ol|dl|dt|dd|blockquote|pre|figure|figcaption|main|aside|span|a|em|strong|b|i|u|label)[^>]*>/gi,
+    /<\/(div|p|li|h[1-6]|tr|td|th|section|article|header|footer|nav|ul|ol|dl|dt|dd|blockquote|pre|figure|figcaption|main|aside)[^>]*>/gi,
     "\n"
   )
   text = text.replace(/<br\s*\/?>/gi, "\n")

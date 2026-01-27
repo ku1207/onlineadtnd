@@ -9,12 +9,14 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card"
-import { Search, Loader2, ExternalLink, Tag, Clock } from "lucide-react"
+import { Search, Loader2, ExternalLink, Tag, Clock, Download } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { NaverAdData } from "@/types/naverAd"
 
 export default function Page1() {
   const [keyword, setKeyword] = useState("")
   const [results, setResults] = useState<NaverAdData[]>([])
+  const [rawText, setRawText] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const [error, setError] = useState("")
@@ -26,6 +28,7 @@ export default function Page1() {
     setIsLoading(true)
     setError("")
     setResults([])
+    setRawText("")
     setSearched(true)
 
     try {
@@ -39,12 +42,26 @@ export default function Page1() {
         return
       }
 
+      setRawText(data.innerText || "")
       setResults(data.results || [])
     } catch {
       setError("서버와 통신 중 오류가 발생했습니다.")
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleDownloadRaw = () => {
+    if (!rawText) return
+    const blob = new Blob([rawText], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `naver-ad-raw-${keyword.trim()}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -113,9 +130,20 @@ export default function Page1() {
           <div className="space-y-6">
             {/* 요약 */}
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">
-                분석 결과
-              </h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  분석 결과
+                </h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadRaw}
+                  className="text-xs"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1" />
+                  raw 파일 확인
+                </Button>
+              </div>
               <span className="text-sm text-gray-500">
                 총 {results.length}개 광고
               </span>
