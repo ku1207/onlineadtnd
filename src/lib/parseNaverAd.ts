@@ -185,10 +185,14 @@ function normalizeAdRunLabel(line: string): string {
   return line.replace(/광고집행기간\s*/g, "").trim()
 }
 
+function hasAdRunMarker(line: string): boolean {
+  return line.includes("광고집행기간")
+}
+
 // 브랜드명을 막는 제어 토큰
 function isBrandBlocker(line: string): boolean {
   if (line === "네이버페이") return true
-  if (line === "광고집행기간") return true
+  if (hasAdRunMarker(line)) return true
   if (isAdRunLabelCandidate(line)) return true
   return false
 }
@@ -271,7 +275,7 @@ export function parseNaverAdText(
     const sitelinkText: string[] = []
     while (
       cursor < nextBlockStart &&
-      lines[cursor] !== "광고집행기간" &&
+      !hasAdRunMarker(lines[cursor]) &&
       !isAdRunLabelCandidate(lines[cursor])
     ) {
       sitelinkText.push(lines[cursor])
@@ -280,11 +284,19 @@ export function parseNaverAdText(
 
     // adRunPeriod
     let adRunPeriodLabel = ""
-    if (cursor < nextBlockStart && lines[cursor] === "광고집행기간") {
-      cursor++ // "광고집행기간" 건너뛰기
-      if (cursor < nextBlockStart) {
-        adRunPeriodLabel = normalizeAdRunLabel(lines[cursor])
+    if (cursor < nextBlockStart && hasAdRunMarker(lines[cursor])) {
+      // 라벨이 같은 줄에 붙어 있을 수 있음
+      const current = lines[cursor]
+      const inlineLabel = normalizeAdRunLabel(current)
+      if (inlineLabel) {
+        adRunPeriodLabel = inlineLabel
         cursor++
+      } else {
+        cursor++ // "광고집행기간" 건너뛰기
+        if (cursor < nextBlockStart) {
+          adRunPeriodLabel = normalizeAdRunLabel(lines[cursor])
+          cursor++
+        }
       }
     } else if (cursor < nextBlockStart && isAdRunLabelCandidate(lines[cursor])) {
       // "광고집행기간" 키워드가 없더라도 라벨 패턴을 만나면 바로 채택
