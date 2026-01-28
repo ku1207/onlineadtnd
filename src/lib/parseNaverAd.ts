@@ -1,6 +1,89 @@
 import { JSDOM } from "jsdom"
 import { NaverAdData } from "@/types/naverAd"
 
+// ── 블록 레벨 요소 목록 (HTML 기본 display:block) ──
+const BLOCK_ELEMENTS = new Set([
+  "address", "article", "aside", "blockquote", "center",
+  "details", "dialog", "dd", "dir", "div", "dl", "dt",
+  "fieldset", "figcaption", "figure", "footer", "form",
+  "h1", "h2", "h3", "h4", "h5", "h6",
+  "header", "hgroup", "hr", "li", "main", "menu",
+  "nav", "ol", "p", "pre", "section", "summary",
+  "table", "tbody", "td", "tfoot", "th", "thead", "tr",
+  "ul",
+])
+
+// 블록 경계를 나타내는 센티넬 문자 (후처리에서 단일 개행으로 변환)
+const BLK = "\x00"
+
+/**
+ * 블록 컨테이너가 텍스트 노드 없이 자식 요소만(2개 이상) 갖는지 판별.
+ * true이면 각 자식을 블록으로 승격시켜 줄바꿈을 삽입한다.
+ * (CSS display:block이 적용된 인라인 요소를 보정하는 휴리스틱)
+ */
+function hasOnlyElementChildren(node: Node): boolean {
+  let elementCount = 0
+  const children = node.childNodes
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]
+    if (child.nodeType === 1 /* ELEMENT_NODE */) {
+      elementCount++
+      continue
+    }
+    if (child.nodeType === 3 /* TEXT_NODE */) {
+      if ((child.textContent ?? "").trim() !== "") return false
+    }
+  }
+  return elementCount >= 2
+}
+
+/**
+ * DOM 트리를 재귀 탐색하여 브라우저 innerText에 가까운 텍스트를 추출한다.
+ * JSDOM은 innerText를 지원하지 않으므로(undefined 반환) 직접 구현한다.
+ *
+ * - 블록 요소: 전후에 BLK 마커를 삽입 (후처리에서 단일 개행으로 치환)
+ * - 인라인 요소: 텍스트를 이어 붙임
+ * - 블록 컨테이너의 자식이 모두 요소(2개 이상)이면 각 자식도 블록으로 취급
+ */
+function walkNode(node: Node, parentForcesBlock = false): string {
+  // 텍스트 노드
+  if (node.nodeType === 3 /* TEXT_NODE */) {
+    return (node.textContent ?? "")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/ {2,}/g, " ")
+  }
+
+  // 요소 노드
+  if (node.nodeType === 1 /* ELEMENT_NODE */) {
+    const el = node as Element
+    const tagName = (el.tagName ?? "").toLowerCase()
+
+    // 비표시 요소 제거
+    if (tagName === "script" || tagName === "style" || tagName === "noscript") {
+      return ""
+    }
+    if (tagName === "br") return "\n"
+    if (tagName === "hr") return "\n"
+
+    const isBlock = BLOCK_ELEMENTS.has(tagName)
+    const treatAsBlock = isBlock || parentForcesBlock
+    const forceChildBlock = isBlock && hasOnlyElementChildren(node)
+
+    let childText = ""
+    const children = node.childNodes
+    for (let i = 0; i < children.length; i++) {
+      childText += walkNode(children[i], forceChildBlock)
+    }
+
+    if (treatAsBlock) {
+      return BLK + childText + BLK
+    }
+    return childText
+  }
+
+  return ""
+}
+
 // 줄 내 공백 뒤에 오는 URL/도메인 패턴을 새 줄로 내려준다 (한글 도메인 포함)
 function insertNewlinesAroundUrls(text: string): string {
   return text.replace(
@@ -30,91 +113,48 @@ function removeBlankLines(text: string): string {
 }
 
 /**
- * HTML에서 브라우저 개발자도구 Properties 탭의 innerText와 동일한 텍스트를 추출한다.
- * jsdom으로 DOM을 만든 뒤 실제 body.innerText를 사용해 줄바꿈과 공백을 그대로 보존한다.
+ * HTML에서 브라우저 개발자도구의 innerText와 동일한 텍스트를 추출한다.
+ *
+ * JSDOM은 innerText를 구현하지 않아 undefined를 반환하므로,
+ * DOM 트리를 직접 탐색하여 블록 요소 경계에 줄바꿈을 삽입한다.
+ * 블록 컨테이너의 자식이 모두 요소인 경우 각 자식도 블록으로 승격시켜
+ * CSS display:block이 적용된 인라인 요소(<a>, <span> 등)도 올바르게 처리한다.
  */
 export function extractInnerText(html: string): string {
   const dom = new JSDOM(html)
   const doc = dom.window.document
 
-  // 화면에 노출되지 않는 콘텐츠 제거 후 실제 innerText 사용 (DevTools layout에 가까움)
-  doc.querySelectorAll("script, style, noscript").forEach((el) => el.remove())
+  // DOM 워커로 텍스트 추출
+  const rawText = walkNode(doc.body ?? doc.documentElement)
 
-  const rawLayoutText = doc.body?.innerText ?? ""
-  const normalizedLayout = rawLayoutText
-    .replace(/\r\n/g, "\n")
+  // 블록 경계 마커(BLK)를 단일 개행으로 변환 + 정규화
+  let text = rawText
+    .replace(/\x00+/g, "\n")
     .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/^[ \t]+/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\n+/, "")
+    .replace(/\n+$/, "")
 
-  const withUrlBreaks = insertNewlinesAroundUrls(normalizedLayout)
-  const withSeparatedUrlTrailing = breakTrailingAfterUrl(withUrlBreaks)
-  const withAdRunBreaks = breakAfterAdRunLabel(withSeparatedUrlTrailing)
-  const cleanedLayout = removeBlankLines(withAdRunBreaks)
+  // URL/도메인과 광고집행기간 라벨이 인라인으로 붙어있는 경우 줄바꿈 삽입
+  text = insertNewlinesAroundUrls(text)
+  text = breakTrailingAfterUrl(text)
+  text = breakAfterAdRunLabel(text)
+  text = removeBlankLines(text)
 
-  if (cleanedLayout.length > 0) return cleanedLayout
-
-  // Fallback: outerText 기반 정리
-  const rawOuterText = (doc.body as any)?.outerText ?? doc.body?.textContent ?? ""
-  const normalizedOuterText = rawOuterText
-    .replace(/\r\n/g, "\n")
-    .replace(/\u00a0/g, " ")
-
-  const adRunSeparated = normalizedOuterText.replace(/광고집행기간/g, "\n광고집행기간\n")
-  const spacedToNewlines = adRunSeparated.replace(/[ \t]{2,}/g, "\n")
-  const withoutTemplate = spacedToNewlines.split("window.__ADFE_TEMPLATE__")[0]
-
-  const withUrlBreaksFallback = insertNewlinesAroundUrls(withoutTemplate)
-  const withSeparatedUrlTrailingFallback = breakTrailingAfterUrl(withUrlBreaksFallback)
-  const withAdRunBreaksFallback = breakAfterAdRunLabel(withSeparatedUrlTrailingFallback)
-  const cleanedOuterText = removeBlankLines(withAdRunBreaksFallback)
-
-  if (cleanedOuterText.length > 0) return cleanedOuterText
-
-  // Fallback: static stripping when DOM innerText is empty (e.g., content rendered via JS/iframes)
-  let text = html
-
-  // script, style, noscript 콘텐츠 제거
-  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-  text = text.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
-
-  // 블록 요소 닫는 태그를 줄바꿈으로 변환 (인라인 요소는 제외)
-  text = text.replace(
-    /<\/(div|p|li|h[1-6]|tr|td|th|section|article|header|footer|nav|ul|ol|dl|dt|dd|blockquote|pre|figure|figcaption|main|aside)[^>]*>/gi,
-    "\n"
-  )
-  text = text.replace(/<br\s*\/?\>/gi, "\n")
-  text = text.replace(/<hr\s*\/?\>/gi, "\n")
-
-  // 남은 태그 제거
-  text = text.replace(/<[^>]+>/g, "")
-
-  // HTML 엔티티 디코딩
-  text = text.replace(/&amp;/g, "&")
-  text = text.replace(/&lt;/g, "<")
-  text = text.replace(/&gt;/g, ">")
-  text = text.replace(/&quot;/g, '"')
-  text = text.replace(/&#39;/g, "'")
-  text = text.replace(/&nbsp;/g, " ")
-  text = text.replace(/&#\d+;/g, "")
-
-  // 공백 정리
-  text = text.replace(/[ \t]+/g, " ")
-  text = text.replace(/\n[ \t]+/g, "\n")
-  text = text.replace(/[ \t]+\n/g, "\n")
-
-  const fallbackWithUrlBreaks = insertNewlinesAroundUrls(text.trim())
-  const fallbackWithSeparatedUrlTrailing = breakTrailingAfterUrl(fallbackWithUrlBreaks)
-  const fallbackWithAdRunBreaks = breakAfterAdRunLabel(fallbackWithSeparatedUrlTrailing)
-  const cleanedFallback = removeBlankLines(fallbackWithAdRunBreaks)
-  return cleanedFallback
+  return text
 }
 
-// DevTools Properties "Copy string contents" 값 그대로(개행/nbsp만 정규화) 반환용
+// DOM 워커로 추출한 텍스트를 줄바꿈/nbsp만 정규화하여 반환
 export function getOuterTextRaw(html: string): string {
   const dom = new JSDOM(html)
   const doc = dom.window.document
-  const rawOuterText = (doc.body as any)?.outerText ?? doc.body?.textContent ?? ""
-  return rawOuterText.replace(/\r\n/g, "\n").replace(/\u00a0/g, " ")
+  const rawText = walkNode(doc.body ?? doc.documentElement)
+  return rawText
+    .replace(/\x00+/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
 }
 
 /**
