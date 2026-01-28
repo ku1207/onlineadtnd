@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { extractInnerText, parseNaverAdText } from "@/lib/parseNaverAd"
+import {
+  extractInnerText,
+  parseNaverAdText,
+  getOuterTextRaw,
+} from "@/lib/parseNaverAd"
 
 export async function GET(request: NextRequest) {
   const keyword = request.nextUrl.searchParams.get("keyword")
@@ -14,13 +18,18 @@ export async function GET(request: NextRequest) {
   const url = `https://ad.search.naver.com/search.naver?where=ad&query=${encodeURIComponent(keyword)}`
 
   try {
+    console.log("[naver-ad] incoming keyword=", keyword)
+
     const response = await fetch(url, {
+      cache: "no-store",
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        Referer: "https://www.naver.com/",
+        "Accept-Charset": "utf-8",
       },
     })
 
@@ -32,10 +41,50 @@ export async function GET(request: NextRequest) {
     }
 
     const html = await response.text()
-    const innerText = extractInnerText(html)
-    const results = parseNaverAdText(innerText, keyword)
+    console.log(
+      "[naver-ad] fetched html",
+      "status=",
+      response.status,
+      "length=",
+      html.length,
+      "content-type=",
+      response.headers.get("content-type")
+    )
 
-    return NextResponse.json({ innerText, results })
+    const innerText = extractInnerText(html)
+    const outerTextRaw = getOuterTextRaw(html)
+    console.log(
+      "[naver-ad] innerText length=",
+      innerText.length,
+      "head sample=",
+      innerText.slice(0, 300)
+    )
+
+    if (innerText.length === 0) {
+      console.warn(
+        "[naver-ad] innerText empty after extract. html head snippet=",
+        html.slice(0, 500)
+      )
+    }
+
+    const results = parseNaverAdText(innerText, keyword)
+    console.log("[naver-ad] parsed results count=", results.length)
+    console.log("[naver-ad] first lines=", innerText.split("\n").slice(0, 40))
+
+    return NextResponse.json({
+      html,
+      innerText,
+      outerTextRaw,
+      results,
+      debug: {
+        url,
+        status: response.status,
+        htmlLength: html.length,
+        innerTextLength: innerText.length,
+        outerTextRawLength: outerTextRaw.length,
+        contentType: response.headers.get("content-type"),
+      },
+    })
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다."

@@ -1,12 +1,75 @@
 import { JSDOM } from "jsdom"
 import { NaverAdData } from "@/types/naverAd"
 
+// 줄 내 공백 뒤에 오는 URL/도메인 패턴을 새 줄로 내려준다 (한글 도메인 포함)
+function insertNewlinesAroundUrls(text: string): string {
+  return text.replace(
+    /(^|[^\n])\s*((?:https?:\/\/)?[\p{L}\p{N}][\p{L}\p{N}._-]*\.[\p{L}\p{N}.-]{2,}(?:\/\S*)?)/gu,
+    (_match, prev, url) => `${prev}\n${url}`
+  )
+}
+
+// URL 바로 뒤에 붙은 텍스트가 있으면 URL 뒤에 줄바꿈을 추가해 분리한다
+function breakTrailingAfterUrl(text: string): string {
+  return text.replace(
+    /((?:https?:\/\/)?[\p{L}\p{N}][\p{L}\p{N}._-]*\.[\p{L}\p{N}.-]{2,}(?:\/\S*)?)(\s+)(\S)/gu,
+    (_m, url, _sp, next) => `${url}\n${next}`
+  )
+}
+
+// "광고집행기간" 뒤에 붙은 기간 정보를 줄바꿈으로 분리한다
+function breakAfterAdRunLabel(text: string): string {
+  return text.replace(/(광고집행기간)(\s*)(\S)/g, (_m, label, _sp, next) => `${label}\n${next}`)
+}
+
+// 완전히 공백인 줄 제거 + 과도한 개행 축소
+function removeBlankLines(text: string): string {
+  return text
+    .replace(/^\s*$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+}
+
 /**
- * HTML 문자열에서 브라우저 개발자도구 Properties 탭의 innerText와
- * 동일한 텍스트를 추출한다.
- * jsdom을 사용하여 실제 DOM을 구성한 뒤 element.innerText를 호출한다.
+ * HTML에서 브라우저 개발자도구 Properties 탭의 innerText와 동일한 텍스트를 추출한다.
+ * jsdom으로 DOM을 만든 뒤 실제 body.innerText를 사용해 줄바꿈과 공백을 그대로 보존한다.
  */
 export function extractInnerText(html: string): string {
+  const dom = new JSDOM(html)
+  const doc = dom.window.document
+
+  // 화면에 노출되지 않는 콘텐츠 제거 후 실제 innerText 사용 (DevTools layout에 가까움)
+  doc.querySelectorAll("script, style, noscript").forEach((el) => el.remove())
+
+  const rawLayoutText = doc.body?.innerText ?? ""
+  const normalizedLayout = rawLayoutText
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+
+  const withUrlBreaks = insertNewlinesAroundUrls(normalizedLayout)
+  const withSeparatedUrlTrailing = breakTrailingAfterUrl(withUrlBreaks)
+  const withAdRunBreaks = breakAfterAdRunLabel(withSeparatedUrlTrailing)
+  const cleanedLayout = removeBlankLines(withAdRunBreaks)
+
+  if (cleanedLayout.length > 0) return cleanedLayout
+
+  // Fallback: outerText 기반 정리
+  const rawOuterText = (doc.body as any)?.outerText ?? doc.body?.textContent ?? ""
+  const normalizedOuterText = rawOuterText
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+
+  const adRunSeparated = normalizedOuterText.replace(/광고집행기간/g, "\n광고집행기간\n")
+  const spacedToNewlines = adRunSeparated.replace(/[ \t]{2,}/g, "\n")
+  const withoutTemplate = spacedToNewlines.split("window.__ADFE_TEMPLATE__")[0]
+
+  const withUrlBreaksFallback = insertNewlinesAroundUrls(withoutTemplate)
+  const withSeparatedUrlTrailingFallback = breakTrailingAfterUrl(withUrlBreaksFallback)
+  const withAdRunBreaksFallback = breakAfterAdRunLabel(withSeparatedUrlTrailingFallback)
+  const cleanedOuterText = removeBlankLines(withAdRunBreaksFallback)
+
+  if (cleanedOuterText.length > 0) return cleanedOuterText
+
+  // Fallback: static stripping when DOM innerText is empty (e.g., content rendered via JS/iframes)
   let text = html
 
   // script, style, noscript 콘텐츠 제거
@@ -19,8 +82,8 @@ export function extractInnerText(html: string): string {
     /<\/(div|p|li|h[1-6]|tr|td|th|section|article|header|footer|nav|ul|ol|dl|dt|dd|blockquote|pre|figure|figcaption|main|aside)[^>]*>/gi,
     "\n"
   )
-  text = text.replace(/<br\s*\/?>/gi, "\n")
-  text = text.replace(/<hr\s*\/?>/gi, "\n")
+  text = text.replace(/<br\s*\/?\>/gi, "\n")
+  text = text.replace(/<hr\s*\/?\>/gi, "\n")
 
   // 남은 태그 제거
   text = text.replace(/<[^>]+>/g, "")
@@ -38,16 +101,28 @@ export function extractInnerText(html: string): string {
   text = text.replace(/[ \t]+/g, " ")
   text = text.replace(/\n[ \t]+/g, "\n")
   text = text.replace(/[ \t]+\n/g, "\n")
-  text = text.replace(/\n{3,}/g, "\n\n")
 
-  return text.trim()
+  const fallbackWithUrlBreaks = insertNewlinesAroundUrls(text.trim())
+  const fallbackWithSeparatedUrlTrailing = breakTrailingAfterUrl(fallbackWithUrlBreaks)
+  const fallbackWithAdRunBreaks = breakAfterAdRunLabel(fallbackWithSeparatedUrlTrailing)
+  const cleanedFallback = removeBlankLines(fallbackWithAdRunBreaks)
+  return cleanedFallback
+}
+
+// DevTools Properties "Copy string contents" 값 그대로(개행/nbsp만 정규화) 반환용
+export function getOuterTextRaw(html: string): string {
+  const dom = new JSDOM(html)
+  const doc = dom.window.document
+  const rawOuterText = (doc.body as any)?.outerText ?? doc.body?.textContent ?? ""
+  return rawOuterText.replace(/\r\n/g, "\n").replace(/\u00a0/g, " ")
 }
 
 /**
  * URL(도메인) 패턴인지 판별한다.
  */
 function isUrlLine(line: string): boolean {
-  return /^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}(\/\S*)?$/.test(line)
+  // Allow Korean/Unicode domains as well as ASCII; optional protocol; simple path tail.
+  return /^(?:https?:\/\/)?[\p{L}\p{N}][\p{L}\p{N}._-]*\.[\p{L}\p{N}.-]{2,}(?:\/\S*)?$/u.test(line)
 }
 
 /**
@@ -58,6 +133,23 @@ function isUrlLine(line: string): boolean {
 function isExcludedLine(line: string): boolean {
   if (/^\d+$/.test(line)) return true
   if (line === "다음페이지") return true
+  return false
+}
+
+// 광고 집행 기간 라벨 후보 (개월, 개월 이상 등)
+function isAdRunLabelCandidate(line: string): boolean {
+  return /\d+\s*개월(?:\s*이상)?/.test(line)
+}
+
+function normalizeAdRunLabel(line: string): string {
+  return line.replace(/광고집행기간\s*/g, "").trim()
+}
+
+// 브랜드명을 막는 제어 토큰
+function isBrandBlocker(line: string): boolean {
+  if (line === "네이버페이") return true
+  if (line === "광고집행기간") return true
+  if (isAdRunLabelCandidate(line)) return true
   return false
 }
 
@@ -103,8 +195,14 @@ export function parseNaverAdText(
         ? urlIndices[blockIdx + 1] - 1
         : lines.length
 
-    // brand
-    const brandName = urlIdx > 0 ? lines[urlIdx - 1] : ""
+    // brand (optional): skip if preceding line is control token like 네이버페이/광고집행기간
+    let brandName = ""
+    if (urlIdx > 0) {
+      const candidate = lines[urlIdx - 1]
+      if (!isBrandBlocker(candidate)) {
+        brandName = candidate
+      }
+    }
     const brandDomain = lines[urlIdx]
 
     let cursor = urlIdx + 1
@@ -131,7 +229,11 @@ export function parseNaverAdText(
 
     // sitelinkText: "광고집행기간" 전까지 누적
     const sitelinkText: string[] = []
-    while (cursor < nextBlockStart && lines[cursor] !== "광고집행기간") {
+    while (
+      cursor < nextBlockStart &&
+      lines[cursor] !== "광고집행기간" &&
+      !isAdRunLabelCandidate(lines[cursor])
+    ) {
       sitelinkText.push(lines[cursor])
       cursor++
     }
@@ -141,9 +243,13 @@ export function parseNaverAdText(
     if (cursor < nextBlockStart && lines[cursor] === "광고집행기간") {
       cursor++ // "광고집행기간" 건너뛰기
       if (cursor < nextBlockStart) {
-        adRunPeriodLabel = lines[cursor]
+        adRunPeriodLabel = normalizeAdRunLabel(lines[cursor])
         cursor++
       }
+    } else if (cursor < nextBlockStart && isAdRunLabelCandidate(lines[cursor])) {
+      // "광고집행기간" 키워드가 없더라도 라벨 패턴을 만나면 바로 채택
+      adRunPeriodLabel = normalizeAdRunLabel(lines[cursor])
+      cursor++
     }
 
     // thumbnailText: 다음 블록 시작 전까지 누적

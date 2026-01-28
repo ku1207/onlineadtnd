@@ -37,12 +37,20 @@ export default function Page1() {
       )
       const data = await response.json()
 
+      console.log("[page1] api response ok=", response.ok)
+      console.log("[page1] innerText length=", (data.innerText || "").length)
+      console.log("[page1] results count=", (data.results || []).length)
+      if (data.debug) {
+        console.log("[page1] debug=", data.debug)
+      }
+
       if (!response.ok) {
         setError(data.error || "데이터를 가져오는데 실패했습니다.")
         return
       }
 
-      setRawText(data.innerText || "")
+      // Prefer plain text for download; fallback to HTML only if text missing
+      setRawText(data.outerTextRaw || data.innerText || data.html || "")
       setResults(data.results || [])
     } catch {
       setError("서버와 통신 중 오류가 발생했습니다.")
