@@ -219,12 +219,12 @@ export default function Page1() {
                     </div>
                   )}
 
-                  {/* 썸네일 텍스트 */}
-                  {ad.assets.thumbnailText.length > 0 && (
+                  {/* 네이버 지도 태그 */}
+                  {ad.assets.naverMapTag.length > 0 && (
                     <div>
-                      <SectionLabel text="썸네일 텍스트" />
+                      <SectionLabel text="네이버 지도 태그" />
                       <div className="flex flex-wrap gap-2 mt-1">
-                        {ad.assets.thumbnailText.map((text, i) => (
+                        {ad.assets.naverMapTag.map((text, i) => (
                           <span
                             key={i}
                             className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs rounded-md"

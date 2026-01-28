@@ -15,7 +15,7 @@ export interface NaverAdData {
   assets: {
     highlights: string
     sitelinkText: string[]
-    thumbnailText: string[]
+    naverMapTag: string[]
   }
   meta: {
     adRunPeriod: { label: string }

@@ -208,7 +208,7 @@ function isBrandBlocker(line: string): boolean {
  * 5. desc 다음줄이 7글자 이상이면 highlights, 미만이면 sitelinkText로
  * 6. "광고집행기간" 전까지 sitelinkText 누적
  * 7. "광고집행기간" 다음줄 = adRunPeriod.label
- * 8. 이후 다음 블록 시작 전까지 thumbnailText 누적
+ * 8. 이후 다음 블록 시작 전까지 naverMapTag 누적 (네이버 지도 태그)
  */
 export function parseNaverAdText(
   rawText: string,
@@ -304,10 +304,10 @@ export function parseNaverAdText(
       cursor++
     }
 
-    // thumbnailText: 다음 블록 시작 전까지 누적
-    const thumbnailText: string[] = []
+    // naverMapTag: 광고집행기간 이후 다음 블록 시작 전까지 누적 (네이버 지도 태그)
+    const naverMapTag: string[] = []
     while (cursor < nextBlockStart) {
-      thumbnailText.push(lines[cursor])
+      naverMapTag.push(lines[cursor])
       cursor++
     }
 
@@ -317,7 +317,7 @@ export function parseNaverAdText(
       brand: { name: brandName, domain: brandDomain },
       payments: { naverpay },
       adText: { title, desc },
-      assets: { highlights, sitelinkText, thumbnailText },
+      assets: { highlights, sitelinkText, naverMapTag },
       meta: { adRunPeriod: { label: adRunPeriodLabel } },
     })
   }
