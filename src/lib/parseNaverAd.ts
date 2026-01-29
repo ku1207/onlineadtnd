@@ -176,6 +176,11 @@ function isExcludedLine(line: string): boolean {
   return false
 }
 
+// 슬라이더 네비게이션 경계 판별 (sitelinkText와 naverMapTag 구분용)
+function isSliderNavigation(line: string): boolean {
+  return line === "이전으로 이동" || line === "다음으로 이동"
+}
+
 // 광고 집행 기간 라벨 후보 (개월, 개월 이상 등)
 function isAdRunLabelCandidate(line: string): boolean {
   return /\d+\s*개월(?:\s*이상)?/.test(line)
@@ -197,18 +202,32 @@ function isBrandBlocker(line: string): boolean {
   return false
 }
 
+// 방문자리뷰 패턴 인식 (예: "방문자리뷰 94")
+function isVisitorReview(line: string): boolean {
+  return /^방문자리뷰\s*\d+/.test(line)
+}
+
+// 네이버 지도 가격 링크 패턴 인식 (예: "기본 8,000원~", "변동가격(업주문의)원~")
+function isNaverMapPriceLink(line: string): boolean {
+  // 가격 정보: ~원, 원~, 숫자+원 패턴 포함
+  return /원[~]?$/.test(line) || /\d+[,\d]*원/.test(line)
+}
+
 /**
  * 추출된 innerText를 파싱하여 NaverAdData 배열로 변환한다.
  *
  * 파싱 로직:
  * 1. URL(도메인) 패턴을 찾는다.
  * 2. URL 바로 윗줄 = brand.name (블록 시작)
- * 3. URL 다음줄이 "네이버페이"이면 naverpay = "Y", 아니면 "N"
+ * 3. URL 다음줄이 "네이버페이" 관련이면 payments.naverpay 텍스트 추출
  * 4. 이후 순서대로: adText.title, adText.desc
- * 5. desc 다음줄이 7글자 이상이면 highlights, 미만이면 sitelinkText로
- * 6. "광고집행기간" 전까지 sitelinkText 누적
- * 7. "광고집행기간" 다음줄 = adRunPeriod.label
- * 8. 이후 다음 블록 시작 전까지 naverMapTag 누적 (네이버 지도 태그)
+ * 5. desc 다음줄이 7글자 이상이면 highlights
+ * 6. "이전으로 이동" 전까지 sitelinkText 누적
+ * 7. "이전으로 이동", "다음으로 이동" 건너뛰기
+ * 8. "광고집행기간" 전까지 naverMapTag 누적
+ * 9. naverMapTag 중 visitorReview, naverMapPriceLink 패턴 분리
+ * 10. "광고집행기간" 다음줄 = adRunPeriod.label
+ * 11. adRunPeriod.label 이후 thumbNailText 누적
  */
 export function parseNaverAdText(
   rawText: string,
@@ -251,11 +270,18 @@ export function parseNaverAdText(
 
     let cursor = urlIdx + 1
 
-    // naverpay 판단
+    // naverpay 판단: "네이버페이" 또는 "네이버 로그인" 텍스트 확인
     let naverpay: "Y" | "N" = "N"
-    if (cursor < nextBlockStart && lines[cursor] === "네이버페이") {
-      naverpay = "Y"
-      cursor++
+    if (cursor < nextBlockStart) {
+      const currentLine = lines[cursor]
+      if (currentLine === "네이버페이" || currentLine.includes("네이버페이") || currentLine.includes("네이버 로그인")) {
+        naverpay = "Y"
+        cursor++
+        // naverpay 다음 줄이 서비스 설명이면 건너뛰기
+        if (cursor < nextBlockStart && lines[cursor].includes("서비스")) {
+          cursor++
+        }
+      }
     }
 
     // adText.title
@@ -264,21 +290,56 @@ export function parseNaverAdText(
     // adText.desc
     const desc = cursor < nextBlockStart ? lines[cursor++] : ""
 
-    // highlights: desc 다음 한 줄의 글자 수 확인
+    // highlights: desc 다음 한 줄의 글자 수 확인 (7글자 이상)
     let highlights = ""
     if (cursor < nextBlockStart && lines[cursor].length >= 7) {
-      highlights = lines[cursor]
+      // 슬라이더 네비게이션이나 광고집행기간이 아닌 경우만
+      if (!isSliderNavigation(lines[cursor]) &&
+          !hasAdRunMarker(lines[cursor]) &&
+          !isAdRunLabelCandidate(lines[cursor])) {
+        highlights = lines[cursor]
+        cursor++
+      }
+    }
+
+    // sitelinkText: "이전으로 이동" 또는 "광고집행기간" 전까지 누적
+    const sitelinkText: string[] = []
+    while (
+      cursor < nextBlockStart &&
+      !isSliderNavigation(lines[cursor]) &&
+      !hasAdRunMarker(lines[cursor]) &&
+      !isAdRunLabelCandidate(lines[cursor]) &&
+      !isVisitorReview(lines[cursor]) &&
+      !isNaverMapPriceLink(lines[cursor])
+    ) {
+      sitelinkText.push(lines[cursor])
       cursor++
     }
 
-    // sitelinkText: "광고집행기간" 전까지 누적
-    const sitelinkText: string[] = []
+    // "이전으로 이동", "다음으로 이동" 건너뛰기
+    while (cursor < nextBlockStart && isSliderNavigation(lines[cursor])) {
+      cursor++
+    }
+
+    // naverMapTag: 광고집행기간 전까지 누적 (visitorReview, naverMapPriceLink 제외)
+    const naverMapTag: string[] = []
+    let visitorReview = ""
+    let naverMapPriceLink = ""
+
     while (
       cursor < nextBlockStart &&
       !hasAdRunMarker(lines[cursor]) &&
       !isAdRunLabelCandidate(lines[cursor])
     ) {
-      sitelinkText.push(lines[cursor])
+      const currentLine = lines[cursor]
+
+      if (isVisitorReview(currentLine)) {
+        visitorReview = currentLine
+      } else if (isNaverMapPriceLink(currentLine)) {
+        naverMapPriceLink = currentLine
+      } else if (!isSliderNavigation(currentLine)) {
+        naverMapTag.push(currentLine)
+      }
       cursor++
     }
 
@@ -304,10 +365,14 @@ export function parseNaverAdText(
       cursor++
     }
 
-    // naverMapTag: 광고집행기간 이후 다음 블록 시작 전까지 누적 (네이버 지도 태그)
-    const naverMapTag: string[] = []
+    // thumbNailText: adRunPeriod.label 이후 다음 블록 시작 전까지 누적
+    const thumbNailText: string[] = []
     while (cursor < nextBlockStart) {
-      naverMapTag.push(lines[cursor])
+      const currentLine = lines[cursor]
+      // 다음 브랜드명이 아닌 경우만 추가
+      if (!isBrandBlocker(currentLine)) {
+        thumbNailText.push(currentLine)
+      }
       cursor++
     }
 
@@ -317,7 +382,14 @@ export function parseNaverAdText(
       brand: { name: brandName, domain: brandDomain },
       payments: { naverpay },
       adText: { title, desc },
-      assets: { highlights, sitelinkText, naverMapTag },
+      assets: {
+        highlights,
+        sitelinkText,
+        naverMapTag,
+        visitorReview,
+        naverMapPriceLink,
+        thumbNailText,
+      },
       meta: { adRunPeriod: { label: adRunPeriodLabel } },
     })
   }
