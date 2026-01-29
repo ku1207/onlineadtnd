@@ -9,9 +9,24 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card"
-import { Search, Loader2, ExternalLink, Tag, Clock, Download } from "lucide-react"
+import { Search, Loader2, ExternalLink, Tag, Clock, Download, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { NaverAdData } from "@/types/naverAd"
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts"
+
+interface MorphemeCount {
+  word: string
+  count: number
+}
 
 export default function Page1() {
   const [keyword, setKeyword] = useState("")
@@ -20,6 +35,11 @@ export default function Page1() {
   const [isLoading, setIsLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const [error, setError] = useState("")
+
+  // 형태소 분석 상태
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [morphemeData, setMorphemeData] = useState<MorphemeCount[]>([])
+  const [analysisError, setAnalysisError] = useState("")
 
   const handleSearch = async () => {
     const trimmed = keyword.trim()
@@ -30,6 +50,8 @@ export default function Page1() {
     setResults([])
     setRawText("")
     setSearched(true)
+    setMorphemeData([])
+    setAnalysisError("")
 
     try {
       const response = await fetch(
@@ -72,18 +94,58 @@ export default function Page1() {
     URL.revokeObjectURL(url)
   }
 
+  const handleAnalyze = async () => {
+    if (results.length === 0) return
+
+    setIsAnalyzing(true)
+    setAnalysisError("")
+    setMorphemeData([])
+
+    try {
+      const response = await fetch("/api/morpheme-analysis", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ data: results }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setAnalysisError(data.error || "형태소 분석에 실패했습니다.")
+        return
+      }
+
+      setMorphemeData(data.morphemeCounts || [])
+    } catch {
+      setAnalysisError("형태소 분석 중 오류가 발생했습니다.")
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleSearch()
     }
   }
 
-  return (
-    <div className="min-h-[calc(100vh-65px)] bg-gray-50">
-      {/* 상단 검색 영역 */}
-      <div className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-6 py-12">
-          <div className="text-center space-y-4">
+  // 막대 그래프 색상 생성
+  const getBarColor = (index: number) => {
+    const colors = [
+      "#3B82F6", "#60A5FA", "#93C5FD", "#BFDBFE", "#DBEAFE",
+      "#2563EB", "#1D4ED8", "#1E40AF", "#1E3A8A", "#172554"
+    ]
+    return colors[index % colors.length]
+  }
+
+  // 검색 전 화면 (ChatGPT 스타일 중앙 배치)
+  if (!searched) {
+    return (
+      <div className="min-h-[calc(100vh-65px)] bg-gray-50 flex flex-col items-center justify-center">
+        <div className="w-full max-w-2xl px-6">
+          <div className="text-center space-y-4 mb-8">
             <h1 className="text-3xl font-bold text-gray-900">
               네이버 광고 인사이트 분석기
             </h1>
@@ -92,7 +154,48 @@ export default function Page1() {
             </p>
           </div>
 
-          <div className="relative max-w-xl mx-auto mt-8">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Input
+              placeholder="키워드를 입력하세요."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="pl-12 h-14 text-lg border-gray-300 focus-visible:ring-blue-500 rounded-xl shadow-sm"
+            />
+            <Button
+              onClick={handleSearch}
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-10 px-6 bg-blue-500 hover:bg-blue-600"
+            >
+              검색
+            </Button>
+          </div>
+
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {["자동차", "보험", "대출", "부동산", "여행"].map((suggestion) => (
+              <button
+                key={suggestion}
+                onClick={() => {
+                  setKeyword(suggestion)
+                }}
+                className="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-full hover:bg-gray-50 hover:border-gray-300 transition-colors"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // 검색 후 화면
+  return (
+    <div className="min-h-[calc(100vh-65px)] bg-gray-50">
+      {/* 상단 검색 영역 */}
+      <div className="bg-white border-b">
+        <div className="max-w-4xl mx-auto px-6 py-6">
+          <div className="relative max-w-xl mx-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <Input
               placeholder="키워드를 입력하세요."
@@ -140,7 +243,7 @@ export default function Page1() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  분석 결과
+                  수집 결과
                 </h2>
                 <Button
                   variant="outline"
@@ -151,11 +254,80 @@ export default function Page1() {
                   <Download className="w-3.5 h-3.5 mr-1" />
                   raw 파일 확인
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing}
+                  className="text-xs"
+                >
+                  {isAnalyzing ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                  ) : (
+                    <BarChart3 className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  분석
+                </Button>
               </div>
               <span className="text-sm text-gray-500">
                 총 {results.length}개 광고
               </span>
             </div>
+
+            {/* 형태소 분석 에러 */}
+            {analysisError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+                {analysisError}
+              </div>
+            )}
+
+            {/* 형태소 분석 결과 차트 */}
+            {morphemeData.length > 0 && (
+              <Card className="bg-white">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5" />
+                    형태소 분석 결과
+                  </CardTitle>
+                  <CardDescription>
+                    광고 텍스트에서 추출된 주요 키워드 빈도
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[400px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={morphemeData.slice(0, 20)}
+                        margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="word"
+                          angle={-45}
+                          textAnchor="end"
+                          interval={0}
+                          height={60}
+                          tick={{ fontSize: 12 }}
+                        />
+                        <YAxis />
+                        <Tooltip
+                          formatter={(value) => [`${value}회`, "빈도"]}
+                          labelFormatter={(label) => `키워드: ${label}`}
+                        />
+                        <Bar dataKey="count" name="빈도">
+                          {morphemeData.slice(0, 20).map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={getBarColor(index)} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-4 text-sm text-gray-500 text-center">
+                    상위 20개 키워드 표시 (총 {morphemeData.length}개 추출)
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* 광고 카드 목록 */}
             {results.map((ad) => (
@@ -236,6 +408,43 @@ export default function Page1() {
                     </div>
                   )}
 
+                  {/* 방문자 리뷰 */}
+                  {ad.assets.visitorReview && (
+                    <div>
+                      <SectionLabel text="방문자 리뷰" />
+                      <p className="text-sm text-gray-700 mt-1">
+                        {ad.assets.visitorReview}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 가격 정보 */}
+                  {ad.assets.naverMapPriceLink && (
+                    <div>
+                      <SectionLabel text="가격 정보" />
+                      <p className="text-sm text-gray-700 mt-1">
+                        {ad.assets.naverMapPriceLink}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 썸네일 텍스트 */}
+                  {ad.assets.thumbNailText && ad.assets.thumbNailText.length > 0 && (
+                    <div>
+                      <SectionLabel text="썸네일 텍스트" />
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {ad.assets.thumbNailText.map((text, i) => (
+                          <span
+                            key={i}
+                            className="px-2.5 py-1 bg-purple-50 text-purple-700 text-xs rounded-md"
+                          >
+                            {text}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* 광고 집행 기간 */}
                   {ad.meta.adRunPeriod.label && (
                     <div>
@@ -251,21 +460,6 @@ export default function Page1() {
                 </CardContent>
               </Card>
             ))}
-
-            {/* JSON 원본 데이터 */}
-            <Card className="bg-white">
-              <CardHeader>
-                <CardTitle className="text-lg">JSON 데이터</CardTitle>
-                <CardDescription>
-                  파싱된 광고 데이터의 JSON 형태
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto text-xs max-h-[500px] leading-relaxed">
-                  {JSON.stringify(results, null, 2)}
-                </pre>
-              </CardContent>
-            </Card>
           </div>
         )}
       </div>
