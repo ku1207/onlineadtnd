@@ -27,10 +27,14 @@ interface MorphemeCount {
   count: number
 }
 
+interface AssetOptimizationItem {
+  [key: string]: string
+}
+
 interface Prompt2Result {
   market_winning_logic: string
   strategic_differentiation: string
-  asset_optimization_plan: string
+  asset_optimization_plan: AssetOptimizationItem[]
   operational_roadmap: string
 }
 
@@ -260,10 +264,21 @@ export default function AnalysisPage() {
                 <h4 className="text-sm font-semibold text-purple-700 mb-2">
                   자산 최적화 방안 (Asset Optimization Plan)
                 </h4>
-                <div className="text-sm text-gray-700 bg-purple-50 p-4 rounded-lg leading-relaxed space-y-2">
-                  {splitIntoSentences(prompt2Result.asset_optimization_plan).map((sentence, idx) => (
-                    <p key={idx}>{sentence}</p>
-                  ))}
+                <div className="text-sm text-gray-700 bg-purple-50 p-4 rounded-lg leading-relaxed space-y-3">
+                  {prompt2Result.asset_optimization_plan.map((item, idx) => {
+                    const key = Object.keys(item)[0]
+                    const value = item[key]
+                    return (
+                      <div key={idx} className="border-l-2 border-purple-300 pl-3">
+                        <span className="font-medium text-purple-800">{key}</span>
+                        <div className="mt-1 space-y-1">
+                          {splitIntoSentences(value).map((sentence, sIdx) => (
+                            <p key={sIdx}>{sentence}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
