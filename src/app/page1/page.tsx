@@ -107,6 +107,10 @@ export default function Page1() {
         JSON.stringify(data.morphemeCounts || [])
       )
       sessionStorage.setItem("morphemeAnalysisKeyword", keyword.trim())
+      sessionStorage.setItem(
+        "prompt2Result",
+        JSON.stringify(data.prompt2Result || {})
+      )
 
       // 분석 결과 페이지로 이동
       router.push("/page1/analysis")

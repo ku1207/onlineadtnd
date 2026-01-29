@@ -27,11 +27,19 @@ interface MorphemeCount {
   count: number
 }
 
+interface Prompt2Result {
+  market_winning_logic: string
+  strategic_differentiation: string
+  asset_optimization_plan: string
+  operational_roadmap: string
+}
+
 export default function AnalysisPage() {
   const router = useRouter()
   const [morphemeData, setMorphemeData] = useState<MorphemeCount[]>([])
   const [keyword, setKeyword] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const [prompt2Result, setPrompt2Result] = useState<Prompt2Result | null>(null)
 
   useEffect(() => {
     // sessionStorage에서 데이터 로드
@@ -51,16 +59,33 @@ export default function AnalysisPage() {
       setKeyword(storedKeyword)
     }
 
+    const storedPrompt2 = sessionStorage.getItem("prompt2Result")
+    if (storedPrompt2) {
+      try {
+        const parsed = JSON.parse(storedPrompt2)
+        setPrompt2Result(parsed)
+      } catch {
+        console.error("프롬프트2 결과 파싱 실패")
+      }
+    }
+
     setIsLoading(false)
   }, [])
 
-  // 막대 그래프 색상 생성
-  const getBarColor = (index: number) => {
-    const colors = [
-      "#3B82F6", "#60A5FA", "#93C5FD", "#BFDBFE", "#DBEAFE",
-      "#2563EB", "#1D4ED8", "#1E40AF", "#1E3A8A", "#172554"
-    ]
-    return colors[index % colors.length]
+  // 막대 그래프 색상 생성 (빈도가 높을수록 진한 파란색)
+  const getBarColor = (index: number, total: number) => {
+    // 가장 진한 색상에서 시작해서 점점 옅어지는 그라데이션
+    const darkest = { r: 30, g: 64, b: 175 }   // #1E40AF (진한 파란색)
+    const lightest = { r: 219, g: 234, b: 254 } // #DBEAFE (옅은 파란색)
+
+    // index 0 = 가장 진한 색, index가 커질수록 옅어짐
+    const ratio = total > 1 ? index / (total - 1) : 0
+
+    const r = Math.round(darkest.r + (lightest.r - darkest.r) * ratio)
+    const g = Math.round(darkest.g + (lightest.g - darkest.g) * ratio)
+    const b = Math.round(darkest.b + (lightest.b - darkest.b) * ratio)
+
+    return `rgb(${r}, ${g}, ${b})`
   }
 
   // 엑셀 다운로드
@@ -172,7 +197,7 @@ export default function AnalysisPage() {
                   />
                   <Bar dataKey="count" name="빈도">
                     {morphemeData.slice(0, 20).map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={getBarColor(index)} />
+                      <Cell key={`cell-${index}`} fill={getBarColor(index, Math.min(morphemeData.length, 20))} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -183,6 +208,56 @@ export default function AnalysisPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* 전략 인사이트 결과 */}
+        {prompt2Result && (
+          <Card className="bg-white mt-6">
+            <CardHeader>
+              <CardTitle className="text-lg">전략 인사이트</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* 시장 승리 공식 */}
+              <div>
+                <h4 className="text-sm font-semibold text-blue-700 mb-2">
+                  시장 승리 공식 (Market Winning Logic)
+                </h4>
+                <p className="text-sm text-gray-700 bg-blue-50 p-4 rounded-lg leading-relaxed">
+                  {prompt2Result.market_winning_logic}
+                </p>
+              </div>
+
+              {/* 전략적 차별화 */}
+              <div>
+                <h4 className="text-sm font-semibold text-green-700 mb-2">
+                  전략적 차별화 (Strategic Differentiation)
+                </h4>
+                <p className="text-sm text-gray-700 bg-green-50 p-4 rounded-lg leading-relaxed">
+                  {prompt2Result.strategic_differentiation}
+                </p>
+              </div>
+
+              {/* 자산 최적화 방안 */}
+              <div>
+                <h4 className="text-sm font-semibold text-purple-700 mb-2">
+                  자산 최적화 방안 (Asset Optimization Plan)
+                </h4>
+                <p className="text-sm text-gray-700 bg-purple-50 p-4 rounded-lg leading-relaxed">
+                  {prompt2Result.asset_optimization_plan}
+                </p>
+              </div>
+
+              {/* 운영 로드맵 */}
+              <div>
+                <h4 className="text-sm font-semibold text-orange-700 mb-2">
+                  운영 로드맵 (Operational Roadmap)
+                </h4>
+                <p className="text-sm text-gray-700 bg-orange-50 p-4 rounded-lg leading-relaxed">
+                  {prompt2Result.operational_roadmap}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )
