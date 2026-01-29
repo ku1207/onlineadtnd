@@ -303,14 +303,13 @@ export function parseNaverAdText(
     }
 
     // sitelinkText: "이전으로 이동" 또는 "광고집행기간" 전까지 누적
+    // (visitorReview, naverMapPriceLink는 naverMapTag 섹션 이후에만 있으므로 여기서 체크하지 않음)
     const sitelinkText: string[] = []
     while (
       cursor < nextBlockStart &&
       !isSliderNavigation(lines[cursor]) &&
       !hasAdRunMarker(lines[cursor]) &&
-      !isAdRunLabelCandidate(lines[cursor]) &&
-      !isVisitorReview(lines[cursor]) &&
-      !isNaverMapPriceLink(lines[cursor])
+      !isAdRunLabelCandidate(lines[cursor])
     ) {
       sitelinkText.push(lines[cursor])
       cursor++
@@ -376,23 +375,32 @@ export function parseNaverAdText(
       cursor++
     }
 
-    results.push({
-      keyword,
-      rank: blockIdx + 1,
-      brand: { name: brandName, domain: brandDomain },
-      payments: { naverpay },
-      adText: { title, desc },
-      assets: {
-        highlights,
-        sitelinkText,
-        naverMapTag,
-        visitorReview,
-        naverMapPriceLink,
-        thumbNailText,
-      },
-      meta: { adRunPeriod: { label: adRunPeriodLabel } },
-    })
+    // 필수값 검증: brand.domain, adText.title, adText.desc, adRunPeriod.label
+    // 모든 필수값이 있어야 완전한 광고 객체로 인정
+    if (brandDomain && title && desc && adRunPeriodLabel) {
+      results.push({
+        keyword,
+        rank: blockIdx + 1,
+        brand: { name: brandName, domain: brandDomain },
+        payments: { naverpay },
+        adText: { title, desc },
+        assets: {
+          highlights,
+          sitelinkText,
+          naverMapTag,
+          visitorReview,
+          naverMapPriceLink,
+          thumbNailText,
+        },
+        meta: { adRunPeriod: { label: adRunPeriodLabel } },
+      })
+    }
   }
+
+  // rank 재정렬 (불완전한 객체가 필터링되어 순번이 맞지 않을 수 있음)
+  results.forEach((item, idx) => {
+    item.rank = idx + 1
+  })
 
   return results
 }
