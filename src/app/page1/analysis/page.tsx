@@ -34,6 +34,21 @@ interface Prompt2Result {
   operational_roadmap: string
 }
 
+// 문장 단위로 분리하는 함수
+// 한국어 문장 종결 패턴 (다., 요., 니다., 세요. 등)과 일반 문장 부호를 기준으로 분리
+const splitIntoSentences = (text: string): string[] => {
+  if (!text) return []
+
+  // 문장 종결 패턴: 마침표, 느낌표, 물음표 뒤에 공백이나 문장 끝이 오는 경우
+  // 단, 숫자 뒤의 마침표(1. 2. 등)는 제외
+  const sentences = text
+    .split(/(?<=[.!?])(?=\s|$)/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+
+  return sentences
+}
+
 export default function AnalysisPage() {
   const router = useRouter()
   const [morphemeData, setMorphemeData] = useState<MorphemeCount[]>([])
@@ -221,9 +236,11 @@ export default function AnalysisPage() {
                 <h4 className="text-sm font-semibold text-blue-700 mb-2">
                   시장 승리 공식 (Market Winning Logic)
                 </h4>
-                <p className="text-sm text-gray-700 bg-blue-50 p-4 rounded-lg leading-relaxed">
-                  {prompt2Result.market_winning_logic}
-                </p>
+                <div className="text-sm text-gray-700 bg-blue-50 p-4 rounded-lg leading-relaxed space-y-2">
+                  {splitIntoSentences(prompt2Result.market_winning_logic).map((sentence, idx) => (
+                    <p key={idx}>{sentence}</p>
+                  ))}
+                </div>
               </div>
 
               {/* 전략적 차별화 */}
@@ -231,9 +248,11 @@ export default function AnalysisPage() {
                 <h4 className="text-sm font-semibold text-green-700 mb-2">
                   전략적 차별화 (Strategic Differentiation)
                 </h4>
-                <p className="text-sm text-gray-700 bg-green-50 p-4 rounded-lg leading-relaxed">
-                  {prompt2Result.strategic_differentiation}
-                </p>
+                <div className="text-sm text-gray-700 bg-green-50 p-4 rounded-lg leading-relaxed space-y-2">
+                  {splitIntoSentences(prompt2Result.strategic_differentiation).map((sentence, idx) => (
+                    <p key={idx}>{sentence}</p>
+                  ))}
+                </div>
               </div>
 
               {/* 자산 최적화 방안 */}
@@ -241,9 +260,11 @@ export default function AnalysisPage() {
                 <h4 className="text-sm font-semibold text-purple-700 mb-2">
                   자산 최적화 방안 (Asset Optimization Plan)
                 </h4>
-                <p className="text-sm text-gray-700 bg-purple-50 p-4 rounded-lg leading-relaxed">
-                  {prompt2Result.asset_optimization_plan}
-                </p>
+                <div className="text-sm text-gray-700 bg-purple-50 p-4 rounded-lg leading-relaxed space-y-2">
+                  {splitIntoSentences(prompt2Result.asset_optimization_plan).map((sentence, idx) => (
+                    <p key={idx}>{sentence}</p>
+                  ))}
+                </div>
               </div>
 
               {/* 운영 로드맵 */}
@@ -251,9 +272,11 @@ export default function AnalysisPage() {
                 <h4 className="text-sm font-semibold text-orange-700 mb-2">
                   운영 로드맵 (Operational Roadmap)
                 </h4>
-                <p className="text-sm text-gray-700 bg-orange-50 p-4 rounded-lg leading-relaxed">
-                  {prompt2Result.operational_roadmap}
-                </p>
+                <div className="text-sm text-gray-700 bg-orange-50 p-4 rounded-lg leading-relaxed space-y-2">
+                  {splitIntoSentences(prompt2Result.operational_roadmap).map((sentence, idx) => (
+                    <p key={idx}>{sentence}</p>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
