@@ -19,8 +19,8 @@ function extractTextFromAds(ads: NaverAdData[]): string {
     if (ad.adText.title) textParts.push(ad.adText.title)
     if (ad.adText.desc) textParts.push(ad.adText.desc)
 
-    // 하이라이트
-    if (ad.assets.highlights) textParts.push(ad.assets.highlights)
+    // 홍보문구
+    if (ad.assets.promotionText) textParts.push(ad.assets.promotionText)
 
     // 사이트링크
     if (ad.assets.sitelinkText.length > 0) {

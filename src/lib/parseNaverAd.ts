@@ -290,14 +290,14 @@ export function parseNaverAdText(
     // adText.desc
     const desc = cursor < nextBlockStart ? lines[cursor++] : ""
 
-    // highlights: desc 다음 한 줄의 글자 수 확인 (7글자 이상)
-    let highlights = ""
+    // promotionText (홍보문구): desc 다음 한 줄의 글자 수 확인 (7글자 이상)
+    let promotionText = ""
     if (cursor < nextBlockStart && lines[cursor].length >= 7) {
       // 슬라이더 네비게이션이나 광고집행기간이 아닌 경우만
       if (!isSliderNavigation(lines[cursor]) &&
           !hasAdRunMarker(lines[cursor]) &&
           !isAdRunLabelCandidate(lines[cursor])) {
-        highlights = lines[cursor]
+        promotionText = lines[cursor]
         cursor++
       }
     }
@@ -385,7 +385,7 @@ export function parseNaverAdText(
         payments: { naverpay },
         adText: { title, desc },
         assets: {
-          highlights,
+          promotionText,
           sitelinkText,
           naverMapTag,
           visitorReview,

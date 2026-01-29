@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import {
   Card,
@@ -12,23 +13,9 @@ import {
 import { Search, Loader2, ExternalLink, Tag, Clock, Download, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { NaverAdData } from "@/types/naverAd"
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts"
-
-interface MorphemeCount {
-  word: string
-  count: number
-}
 
 export default function Page1() {
+  const router = useRouter()
   const [keyword, setKeyword] = useState("")
   const [results, setResults] = useState<NaverAdData[]>([])
   const [rawText, setRawText] = useState("")
@@ -38,7 +25,6 @@ export default function Page1() {
 
   // 형태소 분석 상태
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [morphemeData, setMorphemeData] = useState<MorphemeCount[]>([])
   const [analysisError, setAnalysisError] = useState("")
 
   const handleSearch = async () => {
@@ -50,7 +36,6 @@ export default function Page1() {
     setResults([])
     setRawText("")
     setSearched(true)
-    setMorphemeData([])
     setAnalysisError("")
 
     try {
@@ -99,7 +84,6 @@ export default function Page1() {
 
     setIsAnalyzing(true)
     setAnalysisError("")
-    setMorphemeData([])
 
     try {
       const response = await fetch("/api/morpheme-analysis", {
@@ -117,7 +101,15 @@ export default function Page1() {
         return
       }
 
-      setMorphemeData(data.morphemeCounts || [])
+      // sessionStorage에 분석 결과 저장
+      sessionStorage.setItem(
+        "morphemeAnalysisData",
+        JSON.stringify(data.morphemeCounts || [])
+      )
+      sessionStorage.setItem("morphemeAnalysisKeyword", keyword.trim())
+
+      // 분석 결과 페이지로 이동
+      router.push("/page1/analysis")
     } catch {
       setAnalysisError("형태소 분석 중 오류가 발생했습니다.")
     } finally {
@@ -129,15 +121,6 @@ export default function Page1() {
     if (e.key === "Enter") {
       handleSearch()
     }
-  }
-
-  // 막대 그래프 색상 생성
-  const getBarColor = (index: number) => {
-    const colors = [
-      "#3B82F6", "#60A5FA", "#93C5FD", "#BFDBFE", "#DBEAFE",
-      "#2563EB", "#1D4ED8", "#1E40AF", "#1E3A8A", "#172554"
-    ]
-    return colors[index % colors.length]
   }
 
   // 검색 전 화면 (ChatGPT 스타일 중앙 배치)
@@ -281,54 +264,6 @@ export default function Page1() {
               </div>
             )}
 
-            {/* 형태소 분석 결과 차트 */}
-            {morphemeData.length > 0 && (
-              <Card className="bg-white">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5" />
-                    형태소 분석 결과
-                  </CardTitle>
-                  <CardDescription>
-                    광고 텍스트에서 추출된 주요 키워드 빈도
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[400px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={morphemeData.slice(0, 20)}
-                        margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="word"
-                          angle={-45}
-                          textAnchor="end"
-                          interval={0}
-                          height={60}
-                          tick={{ fontSize: 12 }}
-                        />
-                        <YAxis />
-                        <Tooltip
-                          formatter={(value) => [`${value}회`, "빈도"]}
-                          labelFormatter={(label) => `키워드: ${label}`}
-                        />
-                        <Bar dataKey="count" name="빈도">
-                          {morphemeData.slice(0, 20).map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={getBarColor(index)} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="mt-4 text-sm text-gray-500 text-center">
-                    상위 20개 키워드 표시 (총 {morphemeData.length}개 추출)
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* 광고 카드 목록 */}
             {results.map((ad) => (
               <Card key={ad.rank} className="overflow-hidden bg-white">
@@ -364,12 +299,12 @@ export default function Page1() {
                     </p>
                   </div>
 
-                  {/* 하이라이트 */}
-                  {ad.assets.highlights && (
+                  {/* 홍보문구 */}
+                  {ad.assets.promotionText && (
                     <div>
-                      <SectionLabel text="하이라이트" />
+                      <SectionLabel text="홍보문구" />
                       <p className="text-sm text-gray-700 mt-1 bg-yellow-50 px-3 py-2 rounded">
-                        {ad.assets.highlights}
+                        {ad.assets.promotionText}
                       </p>
                     </div>
                   )}

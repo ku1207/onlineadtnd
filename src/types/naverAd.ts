@@ -13,7 +13,7 @@ export interface NaverAdData {
     desc: string
   }
   assets: {
-    highlights: string
+    promotionText: string
     sitelinkText: string[]
     naverMapTag: string[]
     visitorReview: string
