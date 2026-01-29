@@ -218,7 +218,7 @@ export default function AnalysisPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="mt-4 text-sm text-gray-500 text-center">
+            <div className="mt-1 text-sm text-gray-500 text-center">
               상위 20개 키워드 표시 (총 {morphemeData.length}개 추출)
             </div>
           </CardContent>
