@@ -1,3 +1,6 @@
+export const runtime = "nodejs"
+export const maxDuration = 60
+
 import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { NaverAdData } from "@/types/naverAd"
