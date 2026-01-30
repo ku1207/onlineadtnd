@@ -63,9 +63,9 @@ function extractTextFromAds(ads: NaverAdData[]): string {
 }
 
 // Claude API 호출 헬퍼 함수
-async function callClaude(client: Anthropic, prompt: string): Promise<string> {
+async function callClaude(client: Anthropic, prompt: string, model = "claude-sonnet-4-20250514"): Promise<string> {
   const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model,
     max_tokens: 4096,
     messages: [
       {
@@ -156,8 +156,8 @@ ${textToAnalyze}
 
 중요: JSON 형식으로만 응답하세요. 마크다운 코드 블록이나 다른 텍스트 없이 순수 JSON만 출력하세요.`
 
-    // 형태소 분석 실행
-    const morphemeResponse = await callClaude(client, morphemePrompt)
+    // 형태소 분석 실행 (haiku 모델 사용)
+    const morphemeResponse = await callClaude(client, morphemePrompt, "claude-haiku-4-20250414")
     const morphemeResult = parseJsonResponse<{ morphemes: MorphemeCount[] }>(morphemeResponse)
     const morphemeCounts = morphemeResult.morphemes || []
 
