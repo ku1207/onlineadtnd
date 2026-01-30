@@ -48,7 +48,7 @@ function extractTextFromAds(ads: NaverAdData[]): string {
 async function callClaude(client: Anthropic, prompt: string, model = "claude-sonnet-4-5-20250929"): Promise<string> {
   const response = await client.messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: 8192,
     messages: [
       {
         role: "user",
@@ -65,7 +65,7 @@ async function callClaude(client: Anthropic, prompt: string, model = "claude-son
   return content.text
 }
 
-// JSON 파싱 헬퍼 함수
+// JSON 파싱 헬퍼 함수 (잘린 JSON 복구 시도)
 function parseJsonResponse<T>(text: string): T {
   let jsonText = text.trim()
 
@@ -80,7 +80,35 @@ function parseJsonResponse<T>(text: string): T {
   }
   jsonText = jsonText.trim()
 
-  return JSON.parse(jsonText)
+  // 먼저 정상 파싱 시도
+  try {
+    return JSON.parse(jsonText)
+  } catch {
+    // 잘린 JSON 복구 시도 (words 배열의 경우)
+    // 마지막 완전한 문자열까지 찾아서 배열 닫기
+    const lastCompleteQuote = jsonText.lastIndexOf('",')
+    if (lastCompleteQuote > 0) {
+      const repaired = jsonText.slice(0, lastCompleteQuote + 1) + "]}"
+      try {
+        return JSON.parse(repaired)
+      } catch {
+        // 복구 실패
+      }
+    }
+    
+    // 마지막 완전한 요소까지 찾기 (따옴표로 끝나는 경우)
+    const lastQuote = jsonText.lastIndexOf('"')
+    if (lastQuote > 0) {
+      const repaired = jsonText.slice(0, lastQuote + 1) + "]}"
+      try {
+        return JSON.parse(repaired)
+      } catch {
+        // 복구 실패
+      }
+    }
+
+    throw new Error("JSON 파싱 실패: 응답이 잘렸거나 형식이 올바르지 않습니다.")
+  }
 }
 
 export async function POST(request: Request) {
@@ -130,7 +158,7 @@ ${textToAnalyze}
 
 ## 제약사항
 - 아래 JSON 구조를 엄격히 지키세요.
-- 중복된 단어도 모두 포함하여 반환하세요. (빈도 계산은 별도로 수행됩니다)
+- 중복된 단어도 모두 포함하여 반환하세요.
 
 ## 출력 구조 (Strictly JSON)
 {
