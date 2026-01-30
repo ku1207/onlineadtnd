@@ -117,7 +117,8 @@ export async function POST(request: Request) {
     const client = new Anthropic({ apiKey })
 
     // ========== 형태소 분석 프롬프트 ==========
-    const morphemePrompt = `##역할 다음 한국어 광고 텍스트에서 형태소 분석을 수행해주세요.
+    const morphemePrompt = `## 역할
+다음 한국어 광고 텍스트에서 형태소 분석을 수행해주세요.
 
 ## 입력 텍스트
 ${textToAnalyze}
@@ -125,25 +126,33 @@ ${textToAnalyze}
 ## 목표
 1. 텍스트를 형태소로 분리합니다.
 2. 다음 품사는 제외합니다: 조사(JKS, JKC, JKG, JKO, JKB, JKV, JKQ, JX, JC), 어미(EP, EF, EC, ETN, ETM), 접사, 부호, 기호, 숫자, 영문자 단독
-3. 남은 형태소(명사, 동사 어간, 형용사 어간, 부사 등 의미있는 단어)의 빈도를 카운트합니다.
-4. 빈도순으로 내림차순 정렬합니다.
+3. 남은 형태소(명사, 동사 어간, 형용사 어간, 부사 등 의미있는 단어)를 모두 배열로 반환합니다.
 
 ## 제약사항
 - 아래 JSON 구조를 엄격히 지키세요.
+- 중복된 단어도 모두 포함하여 반환하세요. (빈도 계산은 별도로 수행됩니다)
 
 ## 출력 구조 (Strictly JSON)
 {
-  "morphemes": [
-    {"word": "단어1", "count": 10},
-    {"word": "단어2", "count": 8}
-  ]
+  "words": ["단어1", "단어2", "단어1", "단어3", ...]
 }
 `
 
     // 형태소 분석 실행 (haiku 모델 사용)
     const morphemeResponse = await callClaude(client, morphemePrompt, "claude-haiku-4-5-20251001")
-    const morphemeResult = parseJsonResponse<{ morphemes: MorphemeCount[] }>(morphemeResponse)
-    const morphemeCounts = morphemeResult.morphemes || []
+    const morphemeResult = parseJsonResponse<{ words: string[] }>(morphemeResponse)
+    const words = morphemeResult.words || []
+
+    // 빈도 카운트
+    const frequencyMap = new Map<string, number>()
+    for (const word of words) {
+      frequencyMap.set(word, (frequencyMap.get(word) || 0) + 1)
+    }
+
+    // 내림차순 정렬
+    const morphemeCounts: MorphemeCount[] = Array.from(frequencyMap.entries())
+      .map(([word, count]) => ({ word, count }))
+      .sort((a, b) => b.count - a.count)
 
     // 결과 반환 (형태소 분석 결과만 반환, AI 인사이트는 별도 API로 분리)
     return NextResponse.json({
