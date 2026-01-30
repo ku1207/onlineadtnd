@@ -70,23 +70,8 @@ function parseJsonResponse<T>(text: string): T {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const ads = body.ads as NaverAdData[]
-    const morphemeCounts = body.morphemeCounts as MorphemeCount[]
-
-    if (!ads || ads.length === 0) {
-      return NextResponse.json(
-        { error: "광고 데이터가 없습니다." },
-        { status: 400 }
-      )
-    }
-
-    if (!morphemeCounts || morphemeCounts.length === 0) {
-      return NextResponse.json(
-        { error: "형태소 데이터가 없습니다." },
-        { status: 400 }
-      )
-    }
-
+    const step = body.step as number // 1 또는 2
+    
     // Claude API 키 확인
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
@@ -98,16 +83,34 @@ export async function POST(request: Request) {
 
     const client = new Anthropic({ apiKey })
 
-    // 형태소 raw 데이터 생성 (프롬프트1에 사용)
-    const morphemeRaw = morphemeCounts
-      .map((m) => `${m.word}: ${m.count}회`)
-      .join("\n")
+    // ========== Step 1: 시장 분석 ==========
+    if (step === 1) {
+      const ads = body.ads as NaverAdData[]
+      const morphemeCounts = body.morphemeCounts as MorphemeCount[]
 
-    // JSON 객체 문자열 (프롬프트1에 사용)
-    const jsonDataString = JSON.stringify(ads, null, 2)
+      if (!ads || ads.length === 0) {
+        return NextResponse.json(
+          { error: "광고 데이터가 없습니다." },
+          { status: 400 }
+        )
+      }
 
-    // ========== 클로드 프롬프트1: 시장 분석 ==========
-    const prompt1 = `## 역할
+      if (!morphemeCounts || morphemeCounts.length === 0) {
+        return NextResponse.json(
+          { error: "형태소 데이터가 없습니다." },
+          { status: 400 }
+        )
+      }
+
+      // 형태소 raw 데이터 생성
+      const morphemeRaw = morphemeCounts
+        .map((m) => `${m.word}: ${m.count}회`)
+        .join("\n")
+
+      // JSON 객체 문자열
+      const jsonDataString = JSON.stringify(ads, null, 2)
+
+      const prompt1 = `## 역할
 당신은 대규모 광고 데이터를 처리하는 검색광고 전략 분석가입니다. 개별 업체 분석이 아닌, 시장 전체의 소재 구성 문법과 형태소의 결합 패턴을 통계적으로 해석하여 시각화 가능한 데이터를 생성합니다.
 
 ## 목표
@@ -138,23 +141,38 @@ ${jsonDataString}
 ## 입력 데이터(광고 소재 형태소)
 ${morphemeRaw}`
 
-    // 프롬프트1 실행
-    const prompt1Response = await callClaude(client, prompt1)
-    let prompt1Result: Prompt1Result
-    try {
-      prompt1Result = parseJsonResponse<Prompt1Result>(prompt1Response)
-    } catch {
-      console.error("프롬프트1 JSON 파싱 실패:", prompt1Response)
-      prompt1Result = {
-        market_standard_formula: "분석 결과 파싱에 실패했습니다.",
-        extension_asset_landscape: "분석 결과 파싱에 실패했습니다.",
-        morpheme_intent_clustering: [],
-        message_saturation: "분석 결과 파싱에 실패했습니다.",
+      const prompt1Response = await callClaude(client, prompt1)
+      let prompt1Result: Prompt1Result
+      try {
+        prompt1Result = parseJsonResponse<Prompt1Result>(prompt1Response)
+      } catch {
+        console.error("프롬프트1 JSON 파싱 실패:", prompt1Response)
+        prompt1Result = {
+          market_standard_formula: "분석 결과 파싱에 실패했습니다.",
+          extension_asset_landscape: "분석 결과 파싱에 실패했습니다.",
+          morpheme_intent_clustering: [],
+          message_saturation: "분석 결과 파싱에 실패했습니다.",
+        }
       }
+
+      return NextResponse.json({
+        step: 1,
+        prompt1Result,
+      })
     }
 
-    // ========== 클로드 프롬프트2: 전략 인사이트 ==========
-    const prompt2 = `## 역할
+    // ========== Step 2: 전략 인사이트 ==========
+    if (step === 2) {
+      const prompt1Result = body.prompt1Result as Prompt1Result
+
+      if (!prompt1Result) {
+        return NextResponse.json(
+          { error: "1단계 분석 결과가 없습니다." },
+          { status: 400 }
+        )
+      }
+
+      const prompt2 = `## 역할
 당신은 퍼포먼스 마케팅의 의사결정을 돕는 전략 컨설턴트입니다. 시장의 소재 트렌드와 형태소 데이터를 기반으로, 광고 효율을 극대화할 수 있는 단일 통합 전략을 수립합니다.
 
 ## 목표
@@ -182,26 +200,30 @@ ${morphemeRaw}`
 ## 입력 데이터(광고 소재 분석결과)
 ${JSON.stringify(prompt1Result, null, 2)}`
 
-    // 프롬프트2 실행
-    const prompt2Response = await callClaude(client, prompt2)
-    let prompt2Result: Prompt2Result
-    try {
-      prompt2Result = parseJsonResponse<Prompt2Result>(prompt2Response)
-    } catch {
-      console.error("프롬프트2 JSON 파싱 실패:", prompt2Response)
-      prompt2Result = {
-        market_winning_logic: "전략 분석 결과 파싱에 실패했습니다.",
-        strategic_differentiation: "전략 분석 결과 파싱에 실패했습니다.",
-        asset_optimization_plan: [],
-        operational_roadmap: "전략 분석 결과 파싱에 실패했습니다.",
+      const prompt2Response = await callClaude(client, prompt2)
+      let prompt2Result: Prompt2Result
+      try {
+        prompt2Result = parseJsonResponse<Prompt2Result>(prompt2Response)
+      } catch {
+        console.error("프롬프트2 JSON 파싱 실패:", prompt2Response)
+        prompt2Result = {
+          market_winning_logic: "전략 분석 결과 파싱에 실패했습니다.",
+          strategic_differentiation: "전략 분석 결과 파싱에 실패했습니다.",
+          asset_optimization_plan: [],
+          operational_roadmap: "전략 분석 결과 파싱에 실패했습니다.",
+        }
       }
+
+      return NextResponse.json({
+        step: 2,
+        prompt2Result,
+      })
     }
 
-    // 결과 반환
-    return NextResponse.json({
-      prompt1Result,
-      prompt2Result,
-    })
+    return NextResponse.json(
+      { error: "잘못된 step 값입니다. (1 또는 2)" },
+      { status: 400 }
+    )
   } catch (error) {
     console.error("AI 인사이트 생성 오류:", error)
     return NextResponse.json(

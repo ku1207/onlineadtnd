@@ -80,14 +80,23 @@ const splitIntoSentences = (text: string): string[] => {
   return sentences
 }
 
+interface Prompt1Result {
+  market_standard_formula: string
+  extension_asset_landscape: string
+  morpheme_intent_clustering: string[]
+  message_saturation: string
+}
+
 export default function AnalysisPage() {
   const router = useRouter()
   const [morphemeData, setMorphemeData] = useState<MorphemeCount[]>([])
   const [keyword, setKeyword] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const [prompt1Result, setPrompt1Result] = useState<Prompt1Result | null>(null)
   const [prompt2Result, setPrompt2Result] = useState<Prompt2Result | null>(null)
   const [adCreatives, setAdCreatives] = useState<AdCreative[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+  const [insightStep, setInsightStep] = useState<0 | 1 | 2>(0) // 0: 미시작, 1: 1단계 완료, 2: 2단계 완료
   const [isInsightLoading, setIsInsightLoading] = useState(false)
   const [insightError, setInsightError] = useState("")
   const [naverAdData, setNaverAdData] = useState<NaverAdData[]>([])
@@ -120,6 +129,21 @@ export default function AnalysisPage() {
       }
     }
 
+    // prompt1Result 로드
+    const storedPrompt1 = sessionStorage.getItem("prompt1Result")
+    if (storedPrompt1) {
+      try {
+        const parsed = JSON.parse(storedPrompt1)
+        if (parsed && Object.keys(parsed).length > 0 && parsed.market_standard_formula) {
+          setPrompt1Result(parsed)
+          setInsightStep(1) // 1단계 완료 상태로 설정
+        }
+      } catch {
+        console.error("프롬프트1 결과 파싱 실패")
+      }
+    }
+
+    // prompt2Result 로드
     const storedPrompt2 = sessionStorage.getItem("prompt2Result")
     if (storedPrompt2) {
       try {
@@ -127,6 +151,7 @@ export default function AnalysisPage() {
         // 빈 객체가 아닌 경우에만 설정
         if (parsed && Object.keys(parsed).length > 0 && parsed.market_winning_logic) {
           setPrompt2Result(parsed)
+          setInsightStep(2) // 2단계 완료 상태로 설정
         }
       } catch {
         console.error("프롬프트2 결과 파싱 실패")
@@ -152,7 +177,7 @@ export default function AnalysisPage() {
     return `rgb(${r}, ${g}, ${b})`
   }
 
-  // AI 인사이트 생성
+  // AI 인사이트 생성 (2단계로 분리)
   const handleGenerateInsight = async () => {
     if (morphemeData.length === 0 || naverAdData.length === 0 || isInsightLoading) return
 
@@ -160,25 +185,53 @@ export default function AnalysisPage() {
     setInsightError("")
 
     try {
-      const response = await fetch("/api/ai-insight", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ads: naverAdData,
-          morphemeCounts: morphemeData,
-        }),
-      })
+      // 현재 단계에 따라 다른 API 호출
+      if (insightStep === 0) {
+        // Step 1: 시장 분석
+        const response = await fetch("/api/ai-insight", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            step: 1,
+            ads: naverAdData,
+            morphemeCounts: morphemeData,
+          }),
+        })
 
-      if (!response.ok) {
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "AI 인사이트 생성 실패 (1단계)")
+        }
+
         const data = await response.json()
-        throw new Error(data.error || "AI 인사이트 생성 실패")
-      }
+        setPrompt1Result(data.prompt1Result)
+        setInsightStep(1)
+        
+        // sessionStorage에 저장
+        sessionStorage.setItem("prompt1Result", JSON.stringify(data.prompt1Result))
+      } else if (insightStep === 1 && prompt1Result) {
+        // Step 2: 전략 인사이트
+        const response = await fetch("/api/ai-insight", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            step: 2,
+            prompt1Result: prompt1Result,
+          }),
+        })
 
-      const data = await response.json()
-      setPrompt2Result(data.prompt2Result)
-      
-      // sessionStorage에도 저장
-      sessionStorage.setItem("prompt2Result", JSON.stringify(data.prompt2Result))
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "AI 인사이트 생성 실패 (2단계)")
+        }
+
+        const data = await response.json()
+        setPrompt2Result(data.prompt2Result)
+        setInsightStep(2)
+        
+        // sessionStorage에도 저장
+        sessionStorage.setItem("prompt2Result", JSON.stringify(data.prompt2Result))
+      }
     } catch (error) {
       console.error("AI 인사이트 생성 오류:", error)
       setInsightError(error instanceof Error ? error.message : "AI 인사이트 생성 중 오류가 발생했습니다.")
@@ -332,7 +385,7 @@ export default function AnalysisPage() {
             </div>
 
             {/* AI 인사이트 생성 버튼 */}
-            {!prompt2Result && (
+            {insightStep < 2 && (
               <div className="mt-6 flex flex-col items-center">
                 {insightError && (
                   <div className="mb-3 text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">
@@ -347,17 +400,19 @@ export default function AnalysisPage() {
                   {isInsightLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      AI 인사이트 생성 중...
+                      {insightStep === 0 ? "AI 인사이트 생성 중 (1/2단계)..." : "AI 인사이트 생성 중 (2/2단계)..."}
                     </>
                   ) : (
                     <>
                       <Lightbulb className="w-4 h-4 mr-2" />
-                      AI 인사이트 생성
+                      {insightStep === 0 ? "AI 인사이트 생성 (1/2단계)" : "AI 인사이트 생성 (2/2단계)"}
                     </>
                   )}
                 </Button>
                 <p className="mt-2 text-xs text-gray-400">
-                  형태소 분석 결과를 바탕으로 전략적 인사이트를 생성합니다
+                  {insightStep === 0 
+                    ? "형태소 분석 결과를 바탕으로 시장 분석을 수행합니다" 
+                    : "시장 분석 결과를 바탕으로 전략적 인사이트를 생성합니다"}
                 </p>
               </div>
             )}
