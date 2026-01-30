@@ -23,7 +23,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "jsdom": "^27.4.0",
+    "jsdom": "^24.1.3",
     "lucide-react": "^0.526.0",
     "next": "14.2.30",
     "puppeteer-core": "^24.36.0",
@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@tanstack/react-query-devtools": "^5.66.9",
-    "@types/jsdom": "^27.0.0",
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
