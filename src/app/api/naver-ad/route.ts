@@ -3,6 +3,7 @@ import {
   extractInnerText,
   parseNaverAdText,
   getOuterTextRaw,
+  extractThumbnailImages,
 } from "@/lib/parseNaverAd"
 
 export async function GET(request: NextRequest) {
@@ -67,7 +68,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const results = parseNaverAdText(innerText, keyword)
+    const thumbnailsByBlock = extractThumbnailImages(html)
+    const results = parseNaverAdText(innerText, keyword, thumbnailsByBlock)
     console.log("[naver-ad] parsed results count=", results.length)
     console.log("[naver-ad] first lines=", innerText.split("\n").slice(0, 40))
 

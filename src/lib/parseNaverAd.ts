@@ -197,6 +197,7 @@ function hasAdRunMarker(line: string): boolean {
 // 브랜드명을 막는 제어 토큰
 function isBrandBlocker(line: string): boolean {
   if (line === "네이버페이") return true
+  if (line === "내 업체 등록하기") return true
   if (hasAdRunMarker(line)) return true
   if (isAdRunLabelCandidate(line)) return true
   return false
@@ -211,6 +212,49 @@ function isVisitorReview(line: string): boolean {
 function isNaverMapPriceLink(line: string): boolean {
   // 가격 정보: ~원, 원~, 숫자+원 패턴 포함
   return /원[~]?$/.test(line) || /\d+[,\d]*원/.test(line)
+}
+
+/**
+ * HTML에서 각 광고 블록의 썸네일 이미지 URL을 추출한다.
+ * div.ad_thumb 내부의 img.image 요소의 src 속성을 수집한다.
+ * 반환: 광고 블록 순서대로 이미지 URL 배열의 배열
+ */
+export function extractThumbnailImages(html: string): string[][] {
+  const dom = new JSDOM(html)
+  const doc = dom.window.document
+
+  // 각 광고 블록을 찾음 (네이버 검색광고의 광고 영역)
+  const adBlocks = doc.querySelectorAll(".inner")
+  const result: string[][] = []
+
+  if (adBlocks.length === 0) {
+    // fallback: 전체 문서에서 ad_thumb을 찾아 순서대로 그룹화
+    const allThumbs = doc.querySelectorAll(".ad_thumb img.image")
+    if (allThumbs.length > 0) {
+      const urls: string[] = []
+      allThumbs.forEach((img) => {
+        const src = img.getAttribute("src")
+        if (src) urls.push(src)
+      })
+      // 전체를 하나의 그룹으로 반환하지 않고, 3개씩 그룹화 (일반적 패턴)
+      for (let i = 0; i < urls.length; i += 3) {
+        result.push(urls.slice(i, i + 3))
+      }
+    }
+    return result
+  }
+
+  adBlocks.forEach((block) => {
+    const thumbImgs = block.querySelectorAll(".ad_thumb img.image")
+    const urls: string[] = []
+    thumbImgs.forEach((img) => {
+      const src = img.getAttribute("src")
+      if (src) urls.push(src)
+    })
+    result.push(urls)
+  })
+
+  return result
 }
 
 /**
@@ -231,7 +275,8 @@ function isNaverMapPriceLink(line: string): boolean {
  */
 export function parseNaverAdText(
   rawText: string,
-  keyword: string
+  keyword: string,
+  thumbnailsByBlock?: string[][]
 ): NaverAdData[] {
   const lines = rawText
     .split("\n")
@@ -378,6 +423,11 @@ export function parseNaverAdText(
     // 필수값 검증: brand.domain, adText.title, adText.desc, adRunPeriod.label
     // 모든 필수값이 있어야 완전한 광고 객체로 인정
     if (brandDomain && title && desc && adRunPeriodLabel) {
+      // 썸네일 이미지: blockIdx에 해당하는 이미지 배열 할당
+      const thumbNailImages = thumbnailsByBlock && thumbnailsByBlock[blockIdx]
+        ? thumbnailsByBlock[blockIdx]
+        : []
+
       results.push({
         keyword,
         rank: blockIdx + 1,
@@ -391,6 +441,7 @@ export function parseNaverAdText(
           visitorReview,
           naverMapPriceLink,
           thumbNailText,
+          thumbNailImages,
         },
         meta: { adRunPeriod: { label: adRunPeriodLabel } },
       })
