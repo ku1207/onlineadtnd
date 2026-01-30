@@ -298,20 +298,20 @@ export default function Page1() {
 
                 <CardContent className="pt-5 space-y-5">
                   {/* 광고 텍스트 + 썸네일 이미지 */}
-                  <div className="flex gap-4">
-                    {/* 왼쪽: 광고 텍스트 */}
-                    <div className="flex-1 min-w-0">
-                      <SectionLabel icon={<Tag className="w-3.5 h-3.5" />} text="광고 텍스트" />
-                      <p className="font-medium text-gray-900 mt-1">
-                        {ad.adText.title}
-                      </p>
-                      <p className="text-sm text-gray-600 mt-0.5">
-                        {ad.adText.desc}
-                      </p>
-                    </div>
+                  {ad.assets.thumbNailImages && ad.assets.thumbNailImages.length > 0 ? (
+                    <div className="flex gap-4">
+                      {/* 왼쪽: 광고 텍스트 (썸네일 개수에 따라 너비 자동 조절) */}
+                      <div className="flex-1 min-w-0">
+                        <SectionLabel icon={<Tag className="w-3.5 h-3.5" />} text="광고 텍스트" />
+                        <p className="font-medium text-gray-900 mt-1">
+                          {ad.adText.title}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-0.5 break-words">
+                          {ad.adText.desc}
+                        </p>
+                      </div>
 
-                    {/* 오른쪽: 썸네일 이미지 */}
-                    {ad.assets.thumbNailImages && ad.assets.thumbNailImages.length > 0 && (
+                      {/* 오른쪽: 썸네일 이미지 (1~3개) */}
                       <div className="flex gap-2 flex-shrink-0">
                         {ad.assets.thumbNailImages.map((src, i) => (
                           <div key={i} className="flex flex-col items-center">
@@ -321,15 +321,25 @@ export default function Page1() {
                               className="w-[72px] h-[72px] object-cover rounded-lg border border-gray-200"
                             />
                             {ad.assets.thumbNailText?.[i] && (
-                              <span className="text-[11px] text-gray-500 mt-1 text-center">
+                              <span className="text-[11px] text-gray-500 mt-1 text-center w-[72px] truncate">
                                 {ad.assets.thumbNailText[i]}
                               </span>
                             )}
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <SectionLabel icon={<Tag className="w-3.5 h-3.5" />} text="광고 텍스트" />
+                      <p className="font-medium text-gray-900 mt-1">
+                        {ad.adText.title}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-0.5">
+                        {ad.adText.desc}
+                      </p>
+                    </div>
+                  )}
 
                   {/* 홍보문구 */}
                   {ad.assets.promotionText && (
