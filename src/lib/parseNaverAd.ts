@@ -269,7 +269,10 @@ function extractThumbnailsByRegex(html: string): string[] {
 
 /**
  * HTML에서 각 광고 블록의 썸네일 이미지 URL을 추출한다.
- * div.ad_thumb 내부의 img 요소의 src 속성을 수집한다.
+ *
+ * 핵심: 모든 광고 컨테이너를 찾아 순회하며,
+ * 썸네일이 없는 광고는 빈 배열([])로 반환한다.
+ * 이렇게 해야 텍스트 파서의 광고 순서와 1:1 매핑이 가능하다.
  */
 export function extractThumbnailImages(html: string): string[][] {
   const result: string[][] = []
@@ -278,86 +281,72 @@ export function extractThumbnailImages(html: string): string[][] {
     const dom = new JSDOM(html)
     const doc = dom.window.document
 
-    // JSDOM 기반 추출 시도
-    const adThumbDivs = doc.querySelectorAll(".ad_thumb")
-    console.log("[thumbnail] JSDOM: .ad_thumb divs=", adThumbDivs.length)
+    // 모든 광고 컨테이너를 찾는다
+    // 네이버 검색광고: li > div.inner 구조 또는 li 자체가 광고 단위
+    let adContainers = doc.querySelectorAll("li .inner")
+    if (adContainers.length === 0) {
+      adContainers = doc.querySelectorAll(".inner")
+    }
+    if (adContainers.length === 0) {
+      // fallback: 광고 목록 내 li
+      adContainers = doc.querySelectorAll("ul li")
+    }
 
-    if (adThumbDivs.length > 0) {
-      // 각 ad_thumb div를 순회하며 이미지 URL 수집
-      // 같은 광고 블록에 속하는 ad_thumb를 그룹화
-      let currentGroup: string[] = []
-      let lastParent: Element | null = null
+    console.log("[thumbnail] ad containers found=", adContainers.length)
 
-      adThumbDivs.forEach((thumbDiv) => {
-        // 상위 광고 컨테이너 찾기 (li, .inner, 또는 가장 가까운 상위 요소)
-        const adContainer =
-          thumbDiv.closest("li") ||
-          thumbDiv.closest(".inner") ||
-          thumbDiv.closest("[class*=item]") ||
-          thumbDiv.parentElement
+    if (adContainers.length > 0) {
+      adContainers.forEach((container, idx) => {
+        // 이 컨테이너 안에서 .ad_thumb img를 찾는다
+        const thumbImgs = container.querySelectorAll(".ad_thumb img")
+        const urls: string[] = []
 
-        // 새로운 광고 블록이면 이전 그룹 저장
-        if (adContainer !== lastParent && lastParent !== null && currentGroup.length > 0) {
-          result.push([...currentGroup])
-          currentGroup = []
-        }
-        lastParent = adContainer
-
-        // 이 ad_thumb 내의 모든 img에서 URL 추출
-        const imgs = thumbDiv.querySelectorAll("img")
-        imgs.forEach((img) => {
+        thumbImgs.forEach((img) => {
           const src = getImgSrc(img)
           if (src && src.startsWith("http")) {
-            currentGroup.push(src)
+            urls.push(src)
           }
         })
-      })
-      // 마지막 그룹 저장
-      if (currentGroup.length > 0) {
-        result.push(currentGroup)
-      }
-    }
 
-    // JSDOM에서 못 찾으면 전체 img.image 시도
-    if (result.length === 0) {
-      const imageImgs = doc.querySelectorAll("img.image")
-      console.log("[thumbnail] JSDOM: img.image=", imageImgs.length)
+        // .ad_thumb img가 없으면 .ad_thumb 내 다른 방식도 시도
+        if (urls.length === 0) {
+          const altImgs = container.querySelectorAll("[class*=thumb] img")
+          altImgs.forEach((img) => {
+            const src = getImgSrc(img)
+            if (src && src.startsWith("http")) {
+              urls.push(src)
+            }
+          })
+        }
 
-      const allUrls: string[] = []
-      imageImgs.forEach((img) => {
-        const src = getImgSrc(img)
-        if (src && src.startsWith("http")) {
-          allUrls.push(src)
+        result.push(urls) // 썸네일이 없으면 빈 배열
+        if (urls.length > 0) {
+          console.log(`[thumbnail] container[${idx}] has ${urls.length} thumbnails`)
         }
       })
-      // 3개씩 그룹화
-      for (let i = 0; i < allUrls.length; i += 3) {
-        result.push(allUrls.slice(i, i + 3))
-      }
     }
 
-    console.log("[thumbnail] JSDOM result: groups=", result.length, "total urls=", result.reduce((s, g) => s + g.length, 0))
+    console.log("[thumbnail] JSDOM: containers=", adContainers.length,
+      "with thumbnails=", result.filter(g => g.length > 0).length,
+      "total urls=", result.reduce((s, g) => s + g.length, 0))
   } catch (err) {
     console.error("[thumbnail] JSDOM extraction failed:", err)
   }
 
-  // JSDOM에서 결과를 못 얻으면 정규식 fallback
-  if (result.length === 0 || !result.some((urls) => urls.length > 0)) {
-    result.length = 0
+  // JSDOM에서 컨테이너를 못 찾으면 정규식 fallback
+  if (result.length === 0) {
     console.log("[thumbnail] Trying regex fallback...")
-
     const regexUrls = extractThumbnailsByRegex(html)
     console.log("[thumbnail] Regex found urls=", regexUrls.length)
 
+    // 정규식으로는 광고별 매핑 불가 → 빈 배열 반환 (잘못된 매핑 방지)
+    // 정규식 결과는 어떤 광고에 속하는지 알 수 없으므로 사용하지 않음
     if (regexUrls.length > 0) {
-      // 3개씩 그룹화 (네이버 썸네일 일반 패턴)
-      for (let i = 0; i < regexUrls.length; i += 3) {
-        result.push(regexUrls.slice(i, i + 3))
-      }
+      console.log("[thumbnail] Regex found URLs but cannot map to specific ads. Skipping.")
     }
   }
 
-  console.log("[thumbnail] Final result:", JSON.stringify(result.map(g => g.length)))
+  console.log("[thumbnail] Final: total containers=", result.length,
+    "with thumbnails=", result.filter(g => g.length > 0).length)
   return result
 }
 
