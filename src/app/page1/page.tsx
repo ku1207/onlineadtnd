@@ -49,6 +49,9 @@ export default function Page1() {
       console.log("[page1] results count=", (data.results || []).length)
       if (data.debug) {
         console.log("[page1] debug=", data.debug)
+        if (data.debug.thumbnails) {
+          console.log("[page1] thumbnail debug=", JSON.stringify(data.debug.thumbnails, null, 2))
+        }
       }
 
       if (!response.ok) {

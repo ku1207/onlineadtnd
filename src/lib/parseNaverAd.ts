@@ -219,42 +219,127 @@ function isNaverMapPriceLink(line: string): boolean {
  * div.ad_thumb 내부의 img.image 요소의 src 속성을 수집한다.
  * 반환: 광고 블록 순서대로 이미지 URL 배열의 배열
  */
-export function extractThumbnailImages(html: string): string[][] {
+export interface ThumbnailDebugInfo {
+  totalImgTags: number
+  adThumbDivs: number
+  innerBlocks: number
+  sampleImgs: { className: string; src: string; dataSrc: string }[]
+  adThumbHtmlSamples: string[]
+  extractedUrls: string[][]
+}
+
+/**
+ * img 요소에서 이미지 URL을 추출한다.
+ * src, data-src, data-lazy-src 순으로 시도한다.
+ */
+function getImgSrc(img: Element): string {
+  return (
+    img.getAttribute("src") ||
+    img.getAttribute("data-src") ||
+    img.getAttribute("data-lazy-src") ||
+    ""
+  )
+}
+
+export function extractThumbnailImages(html: string): { thumbnails: string[][]; debug: ThumbnailDebugInfo } {
   const dom = new JSDOM(html)
   const doc = dom.window.document
 
-  // 각 광고 블록을 찾음 (네이버 검색광고의 광고 영역)
-  const adBlocks = doc.querySelectorAll(".inner")
-  const result: string[][] = []
+  // 디버그 정보 수집
+  const allImgs = doc.querySelectorAll("img")
+  const adThumbDivs = doc.querySelectorAll(".ad_thumb")
+  const innerBlocks = doc.querySelectorAll(".inner")
 
-  if (adBlocks.length === 0) {
-    // fallback: 전체 문서에서 ad_thumb을 찾아 순서대로 그룹화
-    const allThumbs = doc.querySelectorAll(".ad_thumb img.image")
-    if (allThumbs.length > 0) {
-      const urls: string[] = []
-      allThumbs.forEach((img) => {
-        const src = img.getAttribute("src")
-        if (src) urls.push(src)
+  const sampleImgs: ThumbnailDebugInfo["sampleImgs"] = []
+  allImgs.forEach((img, i) => {
+    if (i < 30) {
+      sampleImgs.push({
+        className: img.className || "",
+        src: (img.getAttribute("src") || "").slice(0, 150),
+        dataSrc: (img.getAttribute("data-src") || img.getAttribute("data-lazy-src") || "").slice(0, 150),
       })
-      // 전체를 하나의 그룹으로 반환하지 않고, 3개씩 그룹화 (일반적 패턴)
-      for (let i = 0; i < urls.length; i += 3) {
-        result.push(urls.slice(i, i + 3))
-      }
     }
-    return result
-  }
-
-  adBlocks.forEach((block) => {
-    const thumbImgs = block.querySelectorAll(".ad_thumb img.image")
-    const urls: string[] = []
-    thumbImgs.forEach((img) => {
-      const src = img.getAttribute("src")
-      if (src) urls.push(src)
-    })
-    result.push(urls)
   })
 
-  return result
+  const adThumbHtmlSamples: string[] = []
+  adThumbDivs.forEach((div, i) => {
+    if (i < 5) {
+      adThumbHtmlSamples.push(div.innerHTML.slice(0, 500))
+    }
+  })
+
+  const result: string[][] = []
+
+  // 전략 1: .inner 블록 기반 추출
+  if (innerBlocks.length > 0) {
+    innerBlocks.forEach((block) => {
+      const urls: string[] = []
+      // .ad_thumb 내 img (class 무관)
+      let imgs = block.querySelectorAll(".ad_thumb img")
+      if (imgs.length === 0) {
+        // fallback: ad_thumb 없을 수 있으니 다른 썸네일 컨테이너 시도
+        imgs = block.querySelectorAll("[class*=thumb] img")
+      }
+      imgs.forEach((img) => {
+        const src = getImgSrc(img)
+        if (src) urls.push(src)
+      })
+      result.push(urls)
+    })
+  }
+
+  // 전략 2: .inner가 없거나 결과가 모두 비어있으면 ad_thumb 직접 탐색
+  const hasAnyUrl = result.some((urls) => urls.length > 0)
+  if (!hasAnyUrl) {
+    result.length = 0
+
+    // ad_thumb 내의 모든 img를 수집
+    const thumbImgs = doc.querySelectorAll(".ad_thumb img")
+    if (thumbImgs.length > 0) {
+      // ad_thumb 부모 단위로 그룹화
+      const groups: Map<Element, string[]> = new Map()
+      thumbImgs.forEach((img) => {
+        const thumbParent = img.closest(".ad_thumb")
+        if (!thumbParent) return
+        // ad_thumb의 상위 광고 블록을 찾음
+        const adBlock = thumbParent.parentElement?.closest("[class]") || thumbParent
+        if (!groups.has(adBlock)) groups.set(adBlock, [])
+        const src = getImgSrc(img)
+        if (src) groups.get(adBlock)!.push(src)
+      })
+      groups.forEach((urls) => {
+        result.push(urls)
+      })
+    }
+  }
+
+  // 전략 3: 그래도 없으면 class에 "image"가 포함된 img를 전체 탐색
+  if (result.length === 0 || !result.some((urls) => urls.length > 0)) {
+    result.length = 0
+    const imageClassImgs = doc.querySelectorAll("img.image")
+    if (imageClassImgs.length > 0) {
+      const allUrls: string[] = []
+      imageClassImgs.forEach((img) => {
+        const src = getImgSrc(img)
+        if (src) allUrls.push(src)
+      })
+      // 3개씩 그룹화 (네이버 썸네일 일반적 패턴)
+      for (let i = 0; i < allUrls.length; i += 3) {
+        result.push(allUrls.slice(i, i + 3))
+      }
+    }
+  }
+
+  const debug: ThumbnailDebugInfo = {
+    totalImgTags: allImgs.length,
+    adThumbDivs: adThumbDivs.length,
+    innerBlocks: innerBlocks.length,
+    sampleImgs,
+    adThumbHtmlSamples,
+    extractedUrls: result,
+  }
+
+  return { thumbnails: result, debug }
 }
 
 /**
