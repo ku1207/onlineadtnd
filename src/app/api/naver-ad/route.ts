@@ -68,8 +68,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { thumbnails: thumbnailsByBlock, debug: thumbDebug } = extractThumbnailImages(html)
-    console.log("[naver-ad] thumbnailsByBlock=", JSON.stringify(thumbnailsByBlock))
+    const thumbnailsByBlock = extractThumbnailImages(html)
     const results = parseNaverAdText(innerText, keyword, thumbnailsByBlock)
     console.log("[naver-ad] parsed results count=", results.length)
     console.log("[naver-ad] first lines=", innerText.split("\n").slice(0, 40))
@@ -86,7 +85,8 @@ export async function GET(request: NextRequest) {
         innerTextLength: innerText.length,
         outerTextRawLength: outerTextRaw.length,
         contentType: response.headers.get("content-type"),
-        thumbnails: thumbDebug,
+        thumbnailGroups: thumbnailsByBlock.length,
+        thumbnailTotalUrls: thumbnailsByBlock.reduce((s, g) => s + g.length, 0),
       },
     })
   } catch (error) {
