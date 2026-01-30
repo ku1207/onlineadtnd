@@ -254,13 +254,20 @@ export function extractThumbnailImages(html: string): string[][] {
     console.log("[thumbnail] ad containers (ol > li) found=", adContainers.length)
 
     adContainers.forEach((li, idx) => {
-      // li > div.ad_thumb > a > img
-      const thumbImgs = li.querySelectorAll("div.ad_thumb a img")
       const urls: string[] = []
 
-      thumbImgs.forEach((img) => {
+      // 경로 1: li > div.ad_thumb > a > img
+      li.querySelectorAll("div.ad_thumb a img").forEach((img) => {
         const src = getImgSrc(img)
         if (src && src.startsWith("http")) {
+          urls.push(src)
+        }
+      })
+
+      // 경로 2: li > div.sublink_img > a > div > img
+      li.querySelectorAll("div.sublink_img a img").forEach((img) => {
+        const src = getImgSrc(img)
+        if (src && src.startsWith("http") && !urls.includes(src)) {
           urls.push(src)
         }
       })
