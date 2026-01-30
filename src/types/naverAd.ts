@@ -19,6 +19,7 @@ export interface NaverAdData {
     visitorReview: string
     naverMapPriceLink: string
     thumbNailText: string[]
+    thumbNailImages: string[]
   }
   meta: {
     adRunPeriod: { label: string }
