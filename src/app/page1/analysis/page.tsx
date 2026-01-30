@@ -9,7 +9,7 @@ import {
   CardContent,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Download, ArrowLeft, Loader2 } from "lucide-react"
+import { Download, ArrowLeft, Loader2, Sparkles } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -27,11 +27,40 @@ interface MorphemeCount {
   count: number
 }
 
+interface AssetOptimizationItem {
+  [key: string]: string
+}
+
 interface Prompt2Result {
   market_winning_logic: string
   strategic_differentiation: string
-  asset_optimization_plan: string
+  asset_optimization_plan: AssetOptimizationItem[]
   operational_roadmap: string
+}
+
+interface AdCreative {
+  version: string
+  adText: {
+    title: string
+    desc: string
+  }
+  assets: {
+    promotionText: string
+    siteLink: string[]
+    thumbNailText: string[]
+  }
+}
+
+const VERSION_LABEL_MAP: Record<string, string> = {
+  "Winning Logic": "안정적 효율 소재",
+  "Differentiation": "차별화 소재",
+  "Action Oriented": "행동 유도 소재",
+}
+
+const VERSION_COLOR_MAP: Record<string, { bg: string; text: string; border: string }> = {
+  "Winning Logic": { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200" },
+  "Differentiation": { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+  "Action Oriented": { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
 }
 
 // 문장 단위로 분리하는 함수
@@ -55,6 +84,8 @@ export default function AnalysisPage() {
   const [keyword, setKeyword] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [prompt2Result, setPrompt2Result] = useState<Prompt2Result | null>(null)
+  const [adCreatives, setAdCreatives] = useState<AdCreative[]>([])
+  const [isGenerating, setIsGenerating] = useState(false)
 
   useEffect(() => {
     // sessionStorage에서 데이터 로드
@@ -101,6 +132,31 @@ export default function AnalysisPage() {
     const b = Math.round(darkest.b + (lightest.b - darkest.b) * ratio)
 
     return `rgb(${r}, ${g}, ${b})`
+  }
+
+  // AI 소재 생성
+  const handleGenerateCreatives = async () => {
+    if (!prompt2Result || isGenerating) return
+
+    setIsGenerating(true)
+    try {
+      const response = await fetch("/api/creative-generation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt2Result }),
+      })
+
+      if (!response.ok) {
+        throw new Error("소재 생성 실패")
+      }
+
+      const data = await response.json()
+      setAdCreatives(data.ad_creatives || [])
+    } catch (error) {
+      console.error("소재 생성 오류:", error)
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   // 엑셀 다운로드
@@ -228,7 +284,28 @@ export default function AnalysisPage() {
         {prompt2Result && (
           <Card className="bg-white mt-6">
             <CardHeader>
-              <CardTitle className="text-lg">전략 인사이트</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">전략 인사이트</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateCreatives}
+                  disabled={isGenerating}
+                  className="text-xs"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                      생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 mr-1" />
+                      AI 소재 생성
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* 시장 승리 공식 */}
@@ -260,10 +337,21 @@ export default function AnalysisPage() {
                 <h4 className="text-sm font-semibold text-purple-700 mb-2">
                   자산 최적화 방안 (Asset Optimization Plan)
                 </h4>
-                <div className="text-sm text-gray-700 bg-purple-50 p-4 rounded-lg leading-relaxed space-y-2">
-                  {splitIntoSentences(prompt2Result.asset_optimization_plan).map((sentence, idx) => (
-                    <p key={idx}>{sentence}</p>
-                  ))}
+                <div className="text-sm text-gray-700 bg-purple-50 p-4 rounded-lg leading-relaxed space-y-3">
+                  {prompt2Result.asset_optimization_plan.map((item, idx) => {
+                    const key = Object.keys(item)[0]
+                    const value = item[key]
+                    return (
+                      <div key={idx} className="border-l-2 border-purple-300 pl-3">
+                        <span className="font-medium text-purple-800">{key}</span>
+                        <div className="mt-1 space-y-1">
+                          {splitIntoSentences(value).map((sentence, sIdx) => (
+                            <p key={sIdx}>{sentence}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -278,6 +366,104 @@ export default function AnalysisPage() {
                   ))}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* AI 소재 생성 결과 */}
+        {adCreatives.length > 0 && (
+          <Card className="bg-white mt-6">
+            <CardHeader>
+              <CardTitle className="text-lg">AI 소재 생성 결과</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {adCreatives.map((creative, idx) => {
+                const colors = VERSION_COLOR_MAP[creative.version] || {
+                  bg: "bg-gray-50",
+                  text: "text-gray-700",
+                  border: "border-gray-200",
+                }
+                const label = VERSION_LABEL_MAP[creative.version] || creative.version
+
+                return (
+                  <div key={idx}>
+                    {/* 소재 유형 라벨 */}
+                    <div className="mb-3">
+                      <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${colors.bg} ${colors.text}`}>
+                        {label}
+                      </span>
+                    </div>
+
+                    {/* 네이버 광고 미리보기 */}
+                    <div className={`border ${colors.border} rounded-lg p-5 bg-white`}>
+                      {/* 브랜드 정보 */}
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-[13px] font-medium text-gray-800">brand.name</span>
+                        <span className="text-gray-300 text-xs">·</span>
+                        <span className="text-[13px] text-gray-500">brand.domain</span>
+                      </div>
+
+                      {/* 본문 + 썸네일 영역 */}
+                      <div className="flex gap-4">
+                        {/* 왼쪽: 제목 + 설명 + 홍보문구 + 사이트링크 */}
+                        <div className="flex-1 min-w-0">
+                          {/* 제목 */}
+                          <h3 className="text-[15px] font-bold text-[#00834e] leading-snug mb-1.5">
+                            {creative.adText.title}
+                          </h3>
+
+                          {/* 설명 */}
+                          <p className="text-[13px] text-gray-600 leading-relaxed mb-3 line-clamp-2">
+                            {creative.adText.desc}
+                          </p>
+
+                          {/* 홍보문구 */}
+                          {creative.assets.promotionText && (
+                            <div className="flex items-center gap-1.5 mb-3">
+                              <span className="inline-flex items-center text-[11px] font-medium text-[#00834e] border border-[#00834e]/30 rounded-full px-2 py-0.5">
+                                이벤트
+                              </span>
+                              <span className="text-[12px] text-gray-600">
+                                {creative.assets.promotionText}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* 사이트링크 */}
+                          {creative.assets.siteLink && creative.assets.siteLink.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {creative.assets.siteLink.map((link, linkIdx) => (
+                                <span
+                                  key={linkIdx}
+                                  className="inline-block text-[12px] text-gray-700 border border-gray-200 rounded px-2.5 py-1 bg-gray-50"
+                                >
+                                  {link}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 오른쪽: 썸네일 */}
+                        {creative.assets.thumbNailText && creative.assets.thumbNailText.length > 0 && (
+                          <div className="flex gap-2 flex-shrink-0">
+                            {creative.assets.thumbNailText.map((text, tIdx) => (
+                              <div key={tIdx} className="flex flex-col items-center">
+                                <div className="w-[72px] h-[72px] bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
+                                  <span className="text-gray-400 text-[10px]">IMG</span>
+                                </div>
+                                <span className="text-[11px] text-gray-600 mt-1.5 text-center">
+                                  {text}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </CardContent>
           </Card>
         )}

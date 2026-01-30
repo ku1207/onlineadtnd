@@ -14,10 +14,14 @@ interface Prompt1Result {
   message_saturation: string
 }
 
+interface AssetOptimizationItem {
+  [key: string]: string
+}
+
 interface Prompt2Result {
   market_winning_logic: string
   strategic_differentiation: string
-  asset_optimization_plan: string
+  asset_optimization_plan: AssetOptimizationItem[]
   operational_roadmap: string
 }
 
@@ -225,12 +229,13 @@ ${morphemeRaw}`
 ## 제약사항
 - 반드시 100자 이상의 심층적인 분석 내용을 포함하세요.
 - 전문 마케터의 실무 언어를 사용하며, 다른 설명 없이 오직 JSON 객체만 출력하세요.
+- 구체적인 지표 예상 성과 수준을 언급하지 마십시오.
 
 ## 출력 구조 (Strictly JSON)
 {
   "market_winning_logic": "...",
   "strategic_differentiation": "...",
-  "asset_optimization_plan": "...",
+  "asset_optimization_plan": [{"사이트링크":"..."}, {"홍보문구":"..."}, {"네이버 지도 태그":"..."}, {"네이버 지도 가격링크":"..."}, {"썸네일텍스트":"..."}],
   "operational_roadmap": "..."
 }
 
@@ -247,7 +252,7 @@ ${JSON.stringify(prompt1Result, null, 2)}`
       prompt2Result = {
         market_winning_logic: "전략 분석 결과 파싱에 실패했습니다.",
         strategic_differentiation: "전략 분석 결과 파싱에 실패했습니다.",
-        asset_optimization_plan: "전략 분석 결과 파싱에 실패했습니다.",
+        asset_optimization_plan: [],
         operational_roadmap: "전략 분석 결과 파싱에 실패했습니다.",
       }
     }
