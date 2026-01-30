@@ -215,45 +215,149 @@ function isNaverMapPriceLink(line: string): boolean {
 }
 
 /**
- * HTML에서 각 광고 블록의 썸네일 이미지 URL을 추출한다.
- * div.ad_thumb 내부의 img.image 요소의 src 속성을 수집한다.
- * 반환: 광고 블록 순서대로 이미지 URL 배열의 배열
+ * img 요소에서 이미지 URL을 추출한다.
+ * src, data-src, data-lazy-src 순으로 시도한다.
  */
-export function extractThumbnailImages(html: string): string[][] {
-  const dom = new JSDOM(html)
-  const doc = dom.window.document
+function getImgSrc(img: Element): string {
+  return (
+    img.getAttribute("src") ||
+    img.getAttribute("data-src") ||
+    img.getAttribute("data-lazy-src") ||
+    ""
+  )
+}
 
-  // 각 광고 블록을 찾음 (네이버 검색광고의 광고 영역)
-  const adBlocks = doc.querySelectorAll(".inner")
-  const result: string[][] = []
+/**
+ * (정규식 fallback) 원본 HTML 문자열에서 ad_thumb 내 img URL을 직접 추출한다.
+ * JSDOM 파싱이 실패하거나 셀렉터가 매칭되지 않을 때 사용한다.
+ */
+function extractThumbnailsByRegex(html: string): string[] {
+  const urls: string[] = []
 
-  if (adBlocks.length === 0) {
-    // fallback: 전체 문서에서 ad_thumb을 찾아 순서대로 그룹화
-    const allThumbs = doc.querySelectorAll(".ad_thumb img.image")
-    if (allThumbs.length > 0) {
-      const urls: string[] = []
-      allThumbs.forEach((img) => {
-        const src = img.getAttribute("src")
-        if (src) urls.push(src)
-      })
-      // 전체를 하나의 그룹으로 반환하지 않고, 3개씩 그룹화 (일반적 패턴)
-      for (let i = 0; i < urls.length; i += 3) {
-        result.push(urls.slice(i, i + 3))
-      }
+  // ad_thumb 블록 내의 img 태그에서 src 추출
+  // 패턴: <div ... class="...ad_thumb..." ...> ... <img ... src="URL" ... > ... </div>
+  const adThumbRegex = /class="[^"]*ad_thumb[^"]*"[^>]*>[\s\S]*?<\/div>/gi
+  const adThumbBlocks = html.match(adThumbRegex) || []
+
+  for (const block of adThumbBlocks) {
+    // 블록 내 모든 img의 src 추출
+    const imgSrcRegex = /<img[^>]*\bsrc="(https?:\/\/[^"]+)"[^>]*>/gi
+    let match
+    while ((match = imgSrcRegex.exec(block)) !== null) {
+      urls.push(match[1])
     }
-    return result
   }
 
-  adBlocks.forEach((block) => {
-    const thumbImgs = block.querySelectorAll(".ad_thumb img.image")
-    const urls: string[] = []
-    thumbImgs.forEach((img) => {
-      const src = img.getAttribute("src")
-      if (src) urls.push(src)
-    })
-    result.push(urls)
-  })
+  // ad_thumb 블록을 못 찾으면 class="image"인 img의 src를 전체 탐색
+  if (urls.length === 0) {
+    const imgClassImageRegex = /<img[^>]*class="[^"]*\bimage\b[^"]*"[^>]*\bsrc="(https?:\/\/[^"]+)"[^>]*>/gi
+    let match
+    while ((match = imgClassImageRegex.exec(html)) !== null) {
+      urls.push(match[1])
+    }
+    // src가 class 앞에 올 수도 있으므로 역순 패턴도 시도
+    if (urls.length === 0) {
+      const imgSrcClassRegex = /<img[^>]*\bsrc="(https?:\/\/[^"]+)"[^>]*class="[^"]*\bimage\b[^"]*"[^>]*>/gi
+      while ((match = imgSrcClassRegex.exec(html)) !== null) {
+        urls.push(match[1])
+      }
+    }
+  }
 
+  return urls
+}
+
+/**
+ * HTML에서 각 광고 블록의 썸네일 이미지 URL을 추출한다.
+ * div.ad_thumb 내부의 img 요소의 src 속성을 수집한다.
+ */
+export function extractThumbnailImages(html: string): string[][] {
+  const result: string[][] = []
+
+  try {
+    const dom = new JSDOM(html)
+    const doc = dom.window.document
+
+    // JSDOM 기반 추출 시도
+    const adThumbDivs = doc.querySelectorAll(".ad_thumb")
+    console.log("[thumbnail] JSDOM: .ad_thumb divs=", adThumbDivs.length)
+
+    if (adThumbDivs.length > 0) {
+      // 각 ad_thumb div를 순회하며 이미지 URL 수집
+      // 같은 광고 블록에 속하는 ad_thumb를 그룹화
+      let currentGroup: string[] = []
+      let lastParent: Element | null = null
+
+      adThumbDivs.forEach((thumbDiv) => {
+        // 상위 광고 컨테이너 찾기 (li, .inner, 또는 가장 가까운 상위 요소)
+        const adContainer =
+          thumbDiv.closest("li") ||
+          thumbDiv.closest(".inner") ||
+          thumbDiv.closest("[class*=item]") ||
+          thumbDiv.parentElement
+
+        // 새로운 광고 블록이면 이전 그룹 저장
+        if (adContainer !== lastParent && lastParent !== null && currentGroup.length > 0) {
+          result.push([...currentGroup])
+          currentGroup = []
+        }
+        lastParent = adContainer
+
+        // 이 ad_thumb 내의 모든 img에서 URL 추출
+        const imgs = thumbDiv.querySelectorAll("img")
+        imgs.forEach((img) => {
+          const src = getImgSrc(img)
+          if (src && src.startsWith("http")) {
+            currentGroup.push(src)
+          }
+        })
+      })
+      // 마지막 그룹 저장
+      if (currentGroup.length > 0) {
+        result.push(currentGroup)
+      }
+    }
+
+    // JSDOM에서 못 찾으면 전체 img.image 시도
+    if (result.length === 0) {
+      const imageImgs = doc.querySelectorAll("img.image")
+      console.log("[thumbnail] JSDOM: img.image=", imageImgs.length)
+
+      const allUrls: string[] = []
+      imageImgs.forEach((img) => {
+        const src = getImgSrc(img)
+        if (src && src.startsWith("http")) {
+          allUrls.push(src)
+        }
+      })
+      // 3개씩 그룹화
+      for (let i = 0; i < allUrls.length; i += 3) {
+        result.push(allUrls.slice(i, i + 3))
+      }
+    }
+
+    console.log("[thumbnail] JSDOM result: groups=", result.length, "total urls=", result.reduce((s, g) => s + g.length, 0))
+  } catch (err) {
+    console.error("[thumbnail] JSDOM extraction failed:", err)
+  }
+
+  // JSDOM에서 결과를 못 얻으면 정규식 fallback
+  if (result.length === 0 || !result.some((urls) => urls.length > 0)) {
+    result.length = 0
+    console.log("[thumbnail] Trying regex fallback...")
+
+    const regexUrls = extractThumbnailsByRegex(html)
+    console.log("[thumbnail] Regex found urls=", regexUrls.length)
+
+    if (regexUrls.length > 0) {
+      // 3개씩 그룹화 (네이버 썸네일 일반 패턴)
+      for (let i = 0; i < regexUrls.length; i += 3) {
+        result.push(regexUrls.slice(i, i + 3))
+      }
+    }
+  }
+
+  console.log("[thumbnail] Final result:", JSON.stringify(result.map(g => g.length)))
   return result
 }
 

@@ -85,6 +85,8 @@ export async function GET(request: NextRequest) {
         innerTextLength: innerText.length,
         outerTextRawLength: outerTextRaw.length,
         contentType: response.headers.get("content-type"),
+        thumbnailGroups: thumbnailsByBlock.length,
+        thumbnailTotalUrls: thumbnailsByBlock.reduce((s, g) => s + g.length, 0),
       },
     })
   } catch (error) {

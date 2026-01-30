@@ -50,6 +50,11 @@ export default function Page1() {
       if (data.debug) {
         console.log("[page1] debug=", data.debug)
       }
+      // 썸네일 이미지 확인
+      if (data.results?.length > 0) {
+        const thumbCounts = data.results.map((r: NaverAdData) => r.assets?.thumbNailImages?.length || 0)
+        console.log("[page1] thumbNailImages per ad=", thumbCounts)
+      }
 
       if (!response.ok) {
         setError(data.error || "데이터를 가져오는데 실패했습니다.")
