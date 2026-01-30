@@ -112,10 +112,12 @@ export default function Page1() {
         JSON.stringify(data.morphemeCounts || [])
       )
       sessionStorage.setItem("morphemeAnalysisKeyword", keyword.trim())
+      // 광고 데이터도 저장 (AI 인사이트 생성에 필요)
       sessionStorage.setItem(
-        "prompt2Result",
-        JSON.stringify(data.prompt2Result || {})
+        "naverAdData",
+        JSON.stringify(results)
       )
+      // prompt2Result는 별도 API로 분리되어 제거됨
 
       // 분석 결과 페이지로 이동
       router.push("/page1/analysis")

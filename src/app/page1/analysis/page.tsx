@@ -9,7 +9,7 @@ import {
   CardContent,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Download, ArrowLeft, Loader2, Sparkles } from "lucide-react"
+import { Download, ArrowLeft, Loader2, Sparkles, Lightbulb } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -21,6 +21,8 @@ import {
   Cell,
 } from "recharts"
 import * as XLSX from "xlsx"
+
+import { NaverAdData } from "@/types/naverAd"
 
 interface MorphemeCount {
   word: string
@@ -86,11 +88,15 @@ export default function AnalysisPage() {
   const [prompt2Result, setPrompt2Result] = useState<Prompt2Result | null>(null)
   const [adCreatives, setAdCreatives] = useState<AdCreative[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isInsightLoading, setIsInsightLoading] = useState(false)
+  const [insightError, setInsightError] = useState("")
+  const [naverAdData, setNaverAdData] = useState<NaverAdData[]>([])
 
   useEffect(() => {
     // sessionStorage에서 데이터 로드
     const storedData = sessionStorage.getItem("morphemeAnalysisData")
     const storedKeyword = sessionStorage.getItem("morphemeAnalysisKeyword")
+    const storedAdData = sessionStorage.getItem("naverAdData")
 
     if (storedData) {
       try {
@@ -105,11 +111,23 @@ export default function AnalysisPage() {
       setKeyword(storedKeyword)
     }
 
+    if (storedAdData) {
+      try {
+        const parsed = JSON.parse(storedAdData)
+        setNaverAdData(parsed)
+      } catch {
+        console.error("광고 데이터 파싱 실패")
+      }
+    }
+
     const storedPrompt2 = sessionStorage.getItem("prompt2Result")
     if (storedPrompt2) {
       try {
         const parsed = JSON.parse(storedPrompt2)
-        setPrompt2Result(parsed)
+        // 빈 객체가 아닌 경우에만 설정
+        if (parsed && Object.keys(parsed).length > 0 && parsed.market_winning_logic) {
+          setPrompt2Result(parsed)
+        }
       } catch {
         console.error("프롬프트2 결과 파싱 실패")
       }
@@ -132,6 +150,41 @@ export default function AnalysisPage() {
     const b = Math.round(darkest.b + (lightest.b - darkest.b) * ratio)
 
     return `rgb(${r}, ${g}, ${b})`
+  }
+
+  // AI 인사이트 생성
+  const handleGenerateInsight = async () => {
+    if (morphemeData.length === 0 || naverAdData.length === 0 || isInsightLoading) return
+
+    setIsInsightLoading(true)
+    setInsightError("")
+
+    try {
+      const response = await fetch("/api/ai-insight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ads: naverAdData,
+          morphemeCounts: morphemeData,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "AI 인사이트 생성 실패")
+      }
+
+      const data = await response.json()
+      setPrompt2Result(data.prompt2Result)
+      
+      // sessionStorage에도 저장
+      sessionStorage.setItem("prompt2Result", JSON.stringify(data.prompt2Result))
+    } catch (error) {
+      console.error("AI 인사이트 생성 오류:", error)
+      setInsightError(error instanceof Error ? error.message : "AI 인사이트 생성 중 오류가 발생했습니다.")
+    } finally {
+      setIsInsightLoading(false)
+    }
   }
 
   // AI 소재 생성
@@ -277,6 +330,37 @@ export default function AnalysisPage() {
             <div className="mt-1 text-sm text-gray-500 text-center">
               상위 20개 키워드 표시 (총 {morphemeData.length}개 추출)
             </div>
+
+            {/* AI 인사이트 생성 버튼 */}
+            {!prompt2Result && (
+              <div className="mt-6 flex flex-col items-center">
+                {insightError && (
+                  <div className="mb-3 text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">
+                    {insightError}
+                  </div>
+                )}
+                <Button
+                  onClick={handleGenerateInsight}
+                  disabled={isInsightLoading || naverAdData.length === 0}
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-6 py-2.5"
+                >
+                  {isInsightLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      AI 인사이트 생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Lightbulb className="w-4 h-4 mr-2" />
+                      AI 인사이트 생성
+                    </>
+                  )}
+                </Button>
+                <p className="mt-2 text-xs text-gray-400">
+                  형태소 분석 결과를 바탕으로 전략적 인사이트를 생성합니다
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
